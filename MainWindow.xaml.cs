@@ -350,14 +350,19 @@ public partial class MainWindow : Window
             }
         }
 
+        double usableBottom = Math.Min(workArea.Bottom, screenHeight - taskbarHeightDip);
+        double maxWindowHeight = Math.Max(560.0, usableBottom - workArea.Top - 8.0);
+        Width = 854.0;
+        Height = Math.Min(886.0, maxWindowHeight);
+
         bool centerAligned = IsTaskbarCentered();
         if (centerAligned)
-            Left = (screenWidth - Width) / 2.0;
+            Left = Math.Round((screenWidth - Width) / 2.0);
         else
-            Left = workArea.Left + 12;
+            Left = workArea.Left + 2.0;
 
-        double usableBottom = Math.Min(workArea.Bottom, screenHeight - taskbarHeightDip);
-        Top = Math.Max(workArea.Top + 12, usableBottom - Height - 6);
+        // RootCardBorder 底部自带 10px 阴影 Margin，usableBottom - Height 使可视卡片底边精确距任务栏 10px
+        Top = Math.Round(Math.Max(workArea.Top + 2.0, usableBottom - Height));
     }
 
     private static bool IsTaskbarCentered()
@@ -463,7 +468,7 @@ public partial class MainWindow : Window
         _webInsertStartIndex = -1;
         _webInsertedCount = 0;
 
-        var apps = _startMenuService.QueryApps("", 6);
+        var apps = _startMenuService.QueryApps("", 8);
         if (apps.Count > 0)
         {
             _entries.Add(SearchListEntry.CreateHeader("常用应用与系统入口", $"{apps.Count}", SearchCategory.Apps));
@@ -476,7 +481,7 @@ public partial class MainWindow : Window
             }
         }
 
-        var settings = _startMenuService.QuerySettings("", 5);
+        var settings = _startMenuService.QuerySettings("", 7);
         if (settings.Count > 0)
         {
             _entries.Add(SearchListEntry.CreateHeader("快捷系统设置", $"{settings.Count}+", SearchCategory.Settings));
