@@ -20,10 +20,12 @@ public sealed class WinKeyHookService : IDisposable
     private const int VK_MENU = 0x12;
     private const int VK_LMENU = 0xA4;
     private const int VK_RMENU = 0xA5;
+    private const byte VK_ESCAPE = 0x1B;
     private const byte VK_DUMMY_MASK = 0xFF;
 
     private const uint LLKHF_INJECTED = 0x00000010;
     private const uint KEYEVENTF_KEYUP = 0x0002;
+    private const int ASFW_ANY = -1;
 
     private readonly AppSettingsService _settingsService;
     private readonly LowLevelKeyboardProc _hookProc;
@@ -152,6 +154,11 @@ public sealed class WinKeyHookService : IDisposable
                         {
                             _startMenuSessionArmed = false;
                             _handoverWindowUntilTick = now + 260;
+
+                            // 保持当前前台为 StartMenuExperienceHost 时发送 Esc，使其立即收到按键并隐藏开始菜单
+                            DismissNativeStartMenu();
+                            AllowSetForegroundWindow(ASFW_ANY);
+
                             StartMenuTypingIntercepted?.Invoke(typedChar);
                             return 1;
                         }
@@ -196,6 +203,12 @@ public sealed class WinKeyHookService : IDisposable
         return name.Equals("StartMenuExperienceHost", StringComparison.OrdinalIgnoreCase)
                || name.Equals("SearchHost", StringComparison.OrdinalIgnoreCase)
                || name.Equals("ShellExperienceHost", StringComparison.OrdinalIgnoreCase);
+    }
+
+    public static void DismissNativeStartMenu()
+    {
+        keybd_event(VK_ESCAPE, 0, 0, UIntPtr.Zero);
+        keybd_event(VK_ESCAPE, 0, KEYEVENTF_KEYUP, UIntPtr.Zero);
     }
 
     private static void SuppressNativeStartMenuAndReleaseWinKey(byte winVk)
@@ -315,6 +328,12 @@ public sealed class WinKeyHookService : IDisposable
 
     [DllImport("user32.dll")]
     private static extern IntPtr GetForegroundWindow();
+
+    [DllImport("user32.dll")]
+    private static extern bool SetForegroundWindow(IntPtr hWnd);
+
+    [DllImport("user32.dll")]
+    private static extern bool AllowSetForegroundWindow(int dwProcessId);
 
     [DllImport("user32.dll")]
     private static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint lpdwProcessId);

@@ -24,6 +24,10 @@ public partial class MainWindow : Window
     private const uint SWP_SHOWWINDOW = 0x0040;
     private const int SW_SHOWNOACTIVATE = 4;
     private const uint ABM_ACTIVATE = 0x00000006;
+    private const byte VK_MENU = 0x12;
+    private const uint KEYEVENTF_EXTENDEDKEY = 0x0001;
+    private const uint KEYEVENTF_KEYUP = 0x0002;
+    private const uint WM_ACTIVATE = 0x0006;
 
     private readonly AppSettingsService _settingsService;
     private readonly EverythingSearchService _everythingService;
@@ -33,6 +37,8 @@ public partial class MainWindow : Window
     private readonly ActionExecutorService _actionExecutor;
     private readonly DispatcherTimer _taskbarKeepTopTimer;
     private int _taskbarKeepTopTicksRemaining;
+    private long _openingGraceUntilTick;
+    private long _ignoreEscapeUntilTick;
 
     private readonly ObservableCollection<SearchListEntry> _entries = [];
     private CancellationTokenSource? _searchCts;
@@ -63,7 +69,7 @@ public partial class MainWindow : Window
 
         _taskbarKeepTopTimer = new DispatcherTimer
         {
-            Interval = TimeSpan.FromMilliseconds(75)
+            Interval = TimeSpan.FromMilliseconds(60)
         };
         _taskbarKeepTopTimer.Tick += (_, _) =>
         {
@@ -74,6 +80,13 @@ public partial class MainWindow : Window
             }
 
             _taskbarKeepTopTicksRemaining--;
+            var selfHwnd = new WindowInteropHelper(this).Handle;
+            if (selfHwnd != IntPtr.Zero && GetForegroundWindow() != selfHwnd)
+            {
+                ActivateWindowForcefully();
+                SearchTextBox.Focus();
+            }
+
             RevealAndRaiseTaskbar();
         };
 
@@ -131,33 +144,60 @@ public partial class MainWindow : Window
 
     public void ShowPopup(string? initialText)
     {
+        long now = Environment.TickCount64;
+        bool fromStartMenuTyping = !string.IsNullOrEmpty(initialText);
+        _openingGraceUntilTick = now + 550;
+        _ignoreEscapeUntilTick = fromStartMenuTyping ? now + 260 : 0;
+
         PositionLikeStartMenu();
         UpdateEngineBadge();
 
         if (!IsVisible)
+        {
+            // 若从开始菜单打字唤醒，前 30ms 保持 ShowActivated = false，让 StartMenuExperienceHost 完整接收并消费 VK_ESCAPE 关闭自身
+            ShowActivated = !fromStartMenuTyping;
             Show();
+            ShowActivated = true;
+        }
 
         Opacity = 1.0;
         PlayPopupShowAnimation();
-        ActivateWindowForcefully();
         RevealAndRaiseTaskbar();
 
-        _taskbarKeepTopTicksRemaining = 6;
-        _taskbarKeepTopTimer.Stop();
-        _taskbarKeepTopTimer.Start();
-
-        if (!string.IsNullOrEmpty(initialText))
+        if (fromStartMenuTyping)
         {
-            SearchTextBox.Text = initialText;
+            SearchTextBox.Text = initialText!;
             SearchTextBox.CaretIndex = SearchTextBox.Text.Length;
+
+            var focusTimer = new DispatcherTimer
+            {
+                Interval = TimeSpan.FromMilliseconds(32)
+            };
+            focusTimer.Tick += (_, _) =>
+            {
+                focusTimer.Stop();
+                if (!IsVisible)
+                    return;
+
+                ActivateWindowForcefully();
+                RevealAndRaiseTaskbar();
+                SearchTextBox.Focus();
+                Keyboard.Focus(SearchTextBox);
+                SearchTextBox.CaretIndex = SearchTextBox.Text.Length;
+            };
+            focusTimer.Start();
         }
         else
         {
+            ActivateWindowForcefully();
             SearchTextBox.SelectAll();
+            SearchTextBox.Focus();
+            Keyboard.Focus(SearchTextBox);
         }
 
-        SearchTextBox.Focus();
-        Keyboard.Focus(SearchTextBox);
+        _taskbarKeepTopTicksRemaining = 8;
+        _taskbarKeepTopTimer.Stop();
+        _taskbarKeepTopTimer.Start();
 
         if (string.IsNullOrWhiteSpace(SearchTextBox.Text))
             PopulateDefaultLandingEntries();
@@ -312,19 +352,25 @@ public partial class MainWindow : Window
         if (hwnd == IntPtr.Zero)
             return;
 
-        var fg = GetForegroundWindow();
-        uint currentThread = GetCurrentThreadId();
-        uint fgThread = fg != IntPtr.Zero ? GetWindowThreadProcessId(fg, out _) : 0;
+        var prevFg = GetForegroundWindow();
+        if (prevFg != IntPtr.Zero && prevFg != hwnd)
+        {
+            // 合成 Alt 键扩展输入以解除 Windows 对 StartMenuExperienceHost (AppContainer) 的前台锁
+            keybd_event(VK_MENU, 0, KEYEVENTF_EXTENDEDKEY, UIntPtr.Zero);
+            BringWindowToTop(hwnd);
+            SetForegroundWindow(hwnd);
+            SwitchToThisWindow(hwnd, true);
+            keybd_event(VK_MENU, 0, KEYEVENTF_EXTENDEDKEY | KEYEVENTF_KEYUP, UIntPtr.Zero);
 
-        bool attached = false;
-        if (fgThread != 0 && fgThread != currentThread)
-            attached = AttachThreadInput(fgThread, currentThread, true);
-
-        BringWindowToTop(hwnd);
-        SetForegroundWindow(hwnd);
-
-        if (attached)
-            AttachThreadInput(fgThread, currentThread, false);
+            // 若前一个前台窗口是开始菜单 CoreWindow，向其发送失焦通知促使其立即收起
+            PostMessageW(prevFg, WM_ACTIVATE, IntPtr.Zero, hwnd);
+        }
+        else
+        {
+            BringWindowToTop(hwnd);
+            SetForegroundWindow(hwnd);
+            SwitchToThisWindow(hwnd, true);
+        }
 
         Activate();
     }
@@ -855,6 +901,12 @@ public partial class MainWindow : Window
     {
         if (e.Key == Key.Escape)
         {
+            if (Environment.TickCount64 < _ignoreEscapeUntilTick)
+            {
+                e.Handled = true;
+                return;
+            }
+
             if (!string.IsNullOrEmpty(SearchTextBox.Text))
                 SearchTextBox.Clear();
             else
@@ -1070,8 +1122,30 @@ public partial class MainWindow : Window
         if (_suppressDeactivateHide)
             return;
 
+        if (Environment.TickCount64 < _openingGraceUntilTick)
+        {
+            Dispatcher.BeginInvoke(() =>
+            {
+                if (IsVisible)
+                {
+                    ActivateWindowForcefully();
+                    SearchTextBox.Focus();
+                }
+            });
+            return;
+        }
+
         HidePopup();
     }
+
+    [DllImport("user32.dll")]
+    private static extern void keybd_event(byte bVk, byte bScan, uint dwFlags, UIntPtr dwExtraInfo);
+
+    [DllImport("user32.dll")]
+    private static extern void SwitchToThisWindow(IntPtr hWnd, bool fAltTab);
+
+    [DllImport("user32.dll")]
+    private static extern bool PostMessageW(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam);
 
     [ComImport]
     [Guid("56FDF344-FD6D-11d0-958A-006097C9A090")]
