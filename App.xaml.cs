@@ -11,6 +11,7 @@ public partial class App : System.Windows.Application
 {
     private const string MutexName = "EverythingonStart.SingleInstanceMutex";
     private const string ToggleEventName = "EverythingonStart.ToggleEvent";
+    private const string ShutdownEventName = "EverythingonStart.ShutdownEvent";
 
     private Mutex? _instanceMutex;
     private AppSettingsService? _settingsService;
@@ -35,8 +36,13 @@ public partial class App : System.Windows.Application
 
         if (e.Args.Contains("--replace", StringComparer.OrdinalIgnoreCase))
         {
+            if (EventWaitHandle.TryOpenExisting(ShutdownEventName, out var shutdownEvent))
+            {
+                shutdownEvent.Set();
+                Thread.Sleep(300);
+            }
+
             TerminateOtherInstances();
-            CleanupOldBinaries();
         }
 
         _instanceMutex = new Mutex(true, MutexName, out bool createdNew);
@@ -57,26 +63,16 @@ public partial class App : System.Windows.Application
     private static void TerminateOtherInstances()
     {
         int currentPid = Environment.ProcessId;
-        foreach (var proc in Process.GetProcesses())
+        foreach (var proc in Process.GetProcessesByName("EverythingonStart"))
         {
             using (proc)
             {
-                if (proc.Id != currentPid &&
-                    proc.ProcessName.StartsWith("EverythingonStart", StringComparison.OrdinalIgnoreCase))
+                if (proc.Id != currentPid)
                 {
                     proc.Kill();
                     proc.WaitForExit(2000);
                 }
             }
-        }
-    }
-
-    private static void CleanupOldBinaries()
-    {
-        var baseDir = AppContext.BaseDirectory;
-        foreach (var oldFile in System.IO.Directory.EnumerateFiles(baseDir, "*.old*"))
-        {
-            System.IO.File.Delete(oldFile);
         }
     }
 
@@ -199,6 +195,16 @@ public partial class App : System.Windows.Application
                     waitHandle.WaitOne();
                     Dispatcher.BeginInvoke(() => _mainWindow?.ShowPopup(null));
                 }
+            },
+            TaskCreationOptions.LongRunning
+        );
+
+        Task.Factory.StartNew(
+            () =>
+            {
+                using var shutdownHandle = new EventWaitHandle(false, EventResetMode.AutoReset, ShutdownEventName);
+                shutdownHandle.WaitOne();
+                Dispatcher.BeginInvoke(() => Shutdown());
             },
             TaskCreationOptions.LongRunning
         );
