@@ -34,19 +34,32 @@ public partial class App : System.Windows.Application
             return;
         }
 
-        if (e.Args.Contains("--replace", StringComparer.OrdinalIgnoreCase))
+        bool isReplace = e.Args.Contains("--replace", StringComparer.OrdinalIgnoreCase);
+        if (isReplace)
         {
             if (EventWaitHandle.TryOpenExisting(ShutdownEventName, out var shutdownEvent))
             {
                 shutdownEvent.Set();
-                Thread.Sleep(300);
             }
 
             TerminateOtherInstances();
         }
 
-        _instanceMutex = new Mutex(true, MutexName, out bool createdNew);
-        if (!createdNew)
+        bool createdNew = false;
+        int attempts = isReplace ? 30 : 1;
+        for (int i = 0; i < attempts; i++)
+        {
+            _instanceMutex = new Mutex(true, MutexName, out createdNew);
+            if (createdNew)
+                break;
+
+            _instanceMutex.Dispose();
+            _instanceMutex = null;
+            if (isReplace)
+                Thread.Sleep(100);
+        }
+
+        if (!createdNew && !isReplace)
         {
             if (EventWaitHandle.TryOpenExisting(ToggleEventName, out var existingEvent))
                 existingEvent.Set();
@@ -204,7 +217,15 @@ public partial class App : System.Windows.Application
             {
                 using var shutdownHandle = new EventWaitHandle(false, EventResetMode.AutoReset, ShutdownEventName);
                 shutdownHandle.WaitOne();
-                Dispatcher.BeginInvoke(() => Shutdown());
+                if (_trayIcon != null)
+                {
+                    _trayIcon.Visible = false;
+                    _trayIcon.Dispose();
+                }
+
+                _winKeyHookService?.Dispose();
+                _everythingService?.Dispose();
+                Environment.Exit(0);
             },
             TaskCreationOptions.LongRunning
         );
