@@ -23,75 +23,77 @@ public sealed class StartMenuIndexService
     public StartMenuIndexService()
     {
         InitializeSettingsIndex();
-        Task.Run(RebuildAppIndex);
     }
 
     public void RebuildAppIndex()
     {
-        var entries = new List<IndexedEntry>();
-        var seenTitles = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-
-        AddSystemQuickApps(entries, seenTitles);
-
-        string[] roots =
-        [
-            Environment.GetFolderPath(Environment.SpecialFolder.CommonStartMenu),
-            Environment.GetFolderPath(Environment.SpecialFolder.StartMenu),
-            Environment.GetFolderPath(Environment.SpecialFolder.CommonDesktopDirectory),
-            Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory)
-        ];
-
-        foreach (var root in roots)
-        {
-            if (string.IsNullOrWhiteSpace(root) || !Directory.Exists(root))
-                continue;
-
-            foreach (var file in EnumerateShortcutFilesSafe(root))
-            {
-                var title = Path.GetFileNameWithoutExtension(file);
-                if (string.IsNullOrWhiteSpace(title))
-                    continue;
-
-                if (title.Contains("uninstall", StringComparison.OrdinalIgnoreCase) ||
-                    title.Contains("卸载", StringComparison.OrdinalIgnoreCase))
-                {
-                    continue;
-                }
-
-                if (!seenTitles.Add(title))
-                    continue;
-
-                var dir = Path.GetDirectoryName(file) ?? root;
-                var folderName = Path.GetFileName(dir);
-                var info = new FileInfo(file);
-                entries.Add(
-                    new IndexedEntry(
-                        Title: title,
-                        Subtitle: string.IsNullOrEmpty(folderName) ? "开始菜单应用" : $"应用 · {folderName}",
-                        TargetPath: file,
-                        DirectoryPath: dir,
-                        SearchKeywords: $"{title} {folderName}".ToLowerInvariant(),
-                        Kind: SearchResultKind.App,
-                        LastModified: info.Exists ? info.LastWriteTime : null
-                    )
-                );
-            }
-        }
-
         lock (_lock)
         {
+            if (_isIndexed && _appEntries.Count > 0)
+                return;
+
+            var entries = new List<IndexedEntry>(128);
+            var seenTitles = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+            AddSystemQuickApps(entries, seenTitles);
+
+            (string Path, bool Recurse)[] roots =
+            [
+                (Environment.GetFolderPath(Environment.SpecialFolder.CommonStartMenu), true),
+                (Environment.GetFolderPath(Environment.SpecialFolder.StartMenu), true),
+                (Environment.GetFolderPath(Environment.SpecialFolder.CommonDesktopDirectory), false),
+                (Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory), false)
+            ];
+
+            foreach (var (root, recurse) in roots)
+            {
+                if (string.IsNullOrWhiteSpace(root) || !Directory.Exists(root))
+                    continue;
+
+                foreach (var file in EnumerateShortcutFilesSafe(root, recurse))
+                {
+                    var title = Path.GetFileNameWithoutExtension(file);
+                    if (string.IsNullOrWhiteSpace(title))
+                        continue;
+
+                    if (title.Contains("uninstall", StringComparison.OrdinalIgnoreCase) ||
+                        title.Contains("卸载", StringComparison.OrdinalIgnoreCase))
+                    {
+                        continue;
+                    }
+
+                    if (!seenTitles.Add(title))
+                        continue;
+
+                    var dir = Path.GetDirectoryName(file) ?? root;
+                    var folderName = Path.GetFileName(dir);
+                    entries.Add(
+                        new IndexedEntry(
+                            Title: title,
+                            Subtitle: string.IsNullOrEmpty(folderName) ? "开始菜单应用" : $"应用 · {folderName}",
+                            TargetPath: file,
+                            DirectoryPath: dir,
+                            SearchKeywords: $"{title} {folderName}".ToLowerInvariant(),
+                            Kind: SearchResultKind.App,
+                            LastModified: null
+                        )
+                    );
+                }
+            }
+
             _appEntries.Clear();
             _appEntries.AddRange(entries);
             _isIndexed = true;
         }
     }
 
-    private static IEnumerable<string> EnumerateShortcutFilesSafe(string root)
+    private static IEnumerable<string> EnumerateShortcutFilesSafe(string root, bool recurse)
     {
         var options = new EnumerationOptions
         {
             IgnoreInaccessible = true,
-            RecurseSubdirectories = true,
+            RecurseSubdirectories = recurse,
+            MaxRecursionDepth = 3,
             ReturnSpecialDirectories = false
         };
 

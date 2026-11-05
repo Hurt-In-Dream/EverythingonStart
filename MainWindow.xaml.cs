@@ -264,9 +264,11 @@ public partial class MainWindow : Window
 
     private static void TrimProcessMemoryAsync()
     {
-        ThreadPool.QueueUserWorkItem(_ =>
+        _ = Task.Run(async () =>
         {
-            GC.Collect(1, GCCollectionMode.Optimized, blocking: false);
+            await Task.Delay(400);
+            GC.Collect(2, GCCollectionMode.Aggressive, blocking: true, compacting: true);
+            GC.WaitForPendingFinalizers();
             using var currentProcess = System.Diagnostics.Process.GetCurrentProcess();
             K32EmptyWorkingSet(currentProcess.Handle);
         });
