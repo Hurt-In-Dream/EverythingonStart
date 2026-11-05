@@ -15,8 +15,13 @@ namespace EverythingonStart;
 
 public partial class MainWindow : Window
 {
-    private const int GWL_EXSTYLE = -20;
-    private const int WS_EX_TOOLWINDOW = 0x00000080;
+    private static readonly IntPtr HWND_TOPMOST = new(-1);
+    private const uint SWP_NOSIZE = 0x0001;
+    private const uint SWP_NOMOVE = 0x0002;
+    private const uint SWP_NOACTIVATE = 0x0010;
+    private const uint SWP_SHOWWINDOW = 0x0040;
+    private const int SW_SHOWNOACTIVATE = 4;
+    private const uint ABM_ACTIVATE = 0x00000006;
 
     private readonly AppSettingsService _settingsService;
     private readonly EverythingSearchService _everythingService;
@@ -63,8 +68,20 @@ public partial class MainWindow : Window
         var hwnd = new WindowInteropHelper(this).Handle;
         if (hwnd != IntPtr.Zero)
         {
-            int exStyle = GetWindowLongW(hwnd, GWL_EXSTYLE);
-            SetWindowLongW(hwnd, GWL_EXSTYLE, exStyle | WS_EX_TOOLWINDOW);
+            RemoveFromTaskbarTabList(hwnd);
+        }
+    }
+
+    private static void RemoveFromTaskbarTabList(IntPtr hwnd)
+    {
+        var taskbarListType = Type.GetTypeFromCLSID(new Guid("56FDF344-FD6D-11d0-958A-006097C9A090"));
+        if (taskbarListType == null)
+            return;
+
+        if (Activator.CreateInstance(taskbarListType) is ITaskbarList taskbarList)
+        {
+            taskbarList.HrInit();
+            taskbarList.DeleteTab(hwnd);
         }
     }
 
@@ -93,6 +110,7 @@ public partial class MainWindow : Window
 
     public void ShowPopup(string? initialText)
     {
+        RevealAndRaiseTaskbar();
         PositionLikeStartMenu();
         UpdateEngineBadge();
 
@@ -101,6 +119,7 @@ public partial class MainWindow : Window
 
         Opacity = 1.0;
         ActivateWindowForcefully();
+        RevealAndRaiseTaskbar();
 
         if (!string.IsNullOrEmpty(initialText))
         {
@@ -128,17 +147,88 @@ public partial class MainWindow : Window
         Hide();
     }
 
-    private void PositionLikeStartMenu()
+    public void RevealAndRaiseTaskbar()
     {
-        var workArea = SystemParameters.WorkArea;
-        bool centerAligned = IsTaskbarCentered();
+        var taskbarHwnd = FindWindowW("Shell_TrayWnd", null);
+        if (taskbarHwnd != IntPtr.Zero)
+        {
+            ShowWindow(taskbarHwnd, SW_SHOWNOACTIVATE);
+            SetWindowPos(
+                taskbarHwnd,
+                HWND_TOPMOST,
+                0,
+                0,
+                0,
+                0,
+                SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_SHOWWINDOW
+            );
 
+            var appBarData = new APPBARDATA
+            {
+                cbSize = (uint)Marshal.SizeOf<APPBARDATA>(),
+                hWnd = taskbarHwnd
+            };
+            SHAppBarMessage(ABM_ACTIVATE, ref appBarData);
+        }
+
+        var secondaryHwnd = FindWindowW("Shell_SecondaryTrayWnd", null);
+        if (secondaryHwnd != IntPtr.Zero)
+        {
+            ShowWindow(secondaryHwnd, SW_SHOWNOACTIVATE);
+            SetWindowPos(
+                secondaryHwnd,
+                HWND_TOPMOST,
+                0,
+                0,
+                0,
+                0,
+                SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_SHOWWINDOW
+            );
+        }
+
+        var selfHwnd = new WindowInteropHelper(this).Handle;
+        if (selfHwnd != IntPtr.Zero)
+        {
+            SetWindowPos(
+                selfHwnd,
+                HWND_TOPMOST,
+                0,
+                0,
+                0,
+                0,
+                SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_SHOWWINDOW
+            );
+        }
+    }
+
+    public void PositionLikeStartMenu()
+    {
+        double screenWidth = SystemParameters.PrimaryScreenWidth;
+        double screenHeight = SystemParameters.PrimaryScreenHeight;
+        var workArea = SystemParameters.WorkArea;
+
+        double taskbarHeightDip = 48.0;
+        var taskbarHwnd = FindWindowW("Shell_TrayWnd", null);
+        if (taskbarHwnd != IntPtr.Zero && GetWindowRect(taskbarHwnd, out var tbRect))
+        {
+            uint dpi = GetDpiForWindow(taskbarHwnd);
+            double dpiScale = dpi > 0 ? dpi / 96.0 : 1.0;
+            int rawHeight = tbRect.Bottom - tbRect.Top;
+            int rawWidth = tbRect.Right - tbRect.Left;
+            if (rawWidth >= rawHeight && rawHeight > 0)
+            {
+                taskbarHeightDip = Math.Clamp(rawHeight / dpiScale, 32.0, 96.0);
+            }
+        }
+
+        bool centerAligned = IsTaskbarCentered();
         if (centerAligned)
-            Left = workArea.Left + (workArea.Width - Width) / 2.0;
+            Left = (screenWidth - Width) / 2.0;
         else
             Left = workArea.Left + 12;
 
-        Top = Math.Max(workArea.Top + 12, workArea.Bottom - Height - 6);
+        double usableBottom = Math.Min(workArea.Bottom, screenHeight - taskbarHeightDip);
+        Top = Math.Max(workArea.Top + 12, usableBottom - Height - 6);
     }
 
     private static bool IsTaskbarCentered()
@@ -915,11 +1005,72 @@ public partial class MainWindow : Window
         HidePopup();
     }
 
-    [DllImport("user32.dll")]
-    private static extern int GetWindowLongW(IntPtr hWnd, int nIndex);
+    [ComImport]
+    [Guid("56FDF344-FD6D-11d0-958A-006097C9A090")]
+    [InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+    private interface ITaskbarList
+    {
+        [PreserveSig]
+        int HrInit();
+
+        [PreserveSig]
+        int AddTab(IntPtr hwnd);
+
+        [PreserveSig]
+        int DeleteTab(IntPtr hwnd);
+
+        [PreserveSig]
+        int ActivateTab(IntPtr hwnd);
+
+        [PreserveSig]
+        int SetActiveAlt(IntPtr hwnd);
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct RECT
+    {
+        public int Left;
+        public int Top;
+        public int Right;
+        public int Bottom;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct APPBARDATA
+    {
+        public uint cbSize;
+        public IntPtr hWnd;
+        public uint uCallbackMessage;
+        public uint uEdge;
+        public RECT rc;
+        public IntPtr lParam;
+    }
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    private static extern IntPtr FindWindowW(string? lpClassName, string? lpWindowName);
 
     [DllImport("user32.dll")]
-    private static extern int SetWindowLongW(IntPtr hWnd, int nIndex, int dwNewLong);
+    private static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
+
+    [DllImport("user32.dll")]
+    private static extern bool SetWindowPos(
+        IntPtr hWnd,
+        IntPtr hWndInsertAfter,
+        int X,
+        int Y,
+        int cx,
+        int cy,
+        uint uFlags
+    );
+
+    [DllImport("user32.dll")]
+    private static extern bool GetWindowRect(IntPtr hWnd, out RECT lpRect);
+
+    [DllImport("user32.dll")]
+    private static extern uint GetDpiForWindow(IntPtr hwnd);
+
+    [DllImport("shell32.dll")]
+    private static extern UIntPtr SHAppBarMessage(uint dwMessage, ref APPBARDATA pData);
 
     [DllImport("user32.dll")]
     private static extern IntPtr GetForegroundWindow();

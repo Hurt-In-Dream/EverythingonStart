@@ -197,6 +197,8 @@ public partial class App : System.Windows.Application
 
         var window = new MainWindow(settings, everything, startMenu, webService, iconService, actionExecutor);
         window.PreWarm();
+        window.RevealAndRaiseTaskbar();
+        window.PositionLikeStartMenu();
         window.ResultsListBox.UpdateLayout();
 
         double firstSelectableRowHeight = 0;
@@ -231,6 +233,7 @@ public partial class App : System.Windows.Application
         stdout.WriteLine($"[SelfTest] Everything Query Elapsed: {querySw.Elapsed.TotalMilliseconds:F2} ms");
         stdout.WriteLine($"[SelfTest] Apps('电脑') Returned={apps.Count}, Settings('任务栏') Returned={sysSettings.Count}");
         stdout.WriteLine($"[SelfTest] ShowInTaskbar={window.ShowInTaskbar}");
+        stdout.WriteLine($"[SelfTest] WindowBounds=({window.Left:F1}, {window.Top:F1}, {window.Width:F1}x{window.Height:F1}), ScreenHeight={SystemParameters.PrimaryScreenHeight:F1}");
         stdout.WriteLine($"[SelfTest] FirstSelectableRowHeight={firstSelectableRowHeight:F1} px");
         stdout.WriteLine($"[SelfTest] Total SelfTest Elapsed: {sw.Elapsed.TotalMilliseconds:F2} ms");
 
