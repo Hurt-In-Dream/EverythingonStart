@@ -11,6 +11,11 @@ public sealed class AppSettings
     public WinKeyTriggerMode TriggerMode { get; set; } = WinKeyTriggerMode.InterceptTypingInStartMenu;
     public WebSearchEngine SearchEngine { get; set; } = WebSearchEngine.Bing;
     public string EverythingInstanceName { get; set; } = string.Empty;
+    public double CachedStartMenuCardWidthDip { get; set; }
+    public double CachedStartMenuCardHeightDip { get; set; }
+    public double CachedStartMenuBottomGapDip { get; set; } = 10.0;
+    public double CachedScreenWidthDip { get; set; }
+    public double CachedScreenHeightDip { get; set; }
 }
 
 public sealed class AppSettingsService

@@ -24,6 +24,7 @@ public partial class App : System.Windows.Application
     private WebSuggestionService? _webSuggestionService;
     private IconCacheService? _iconCacheService;
     private ActionExecutorService? _actionExecutor;
+    private StartMenuBoundsService? _boundsService;
     private WinKeyHookService? _winKeyHookService;
     private MainWindow? _mainWindow;
     private Forms.NotifyIcon? _trayIcon;
@@ -101,6 +102,7 @@ public partial class App : System.Windows.Application
         _webSuggestionService = new WebSuggestionService(_settingsService);
         _iconCacheService = new IconCacheService();
         _actionExecutor = new ActionExecutorService(_everythingService);
+        _boundsService = new StartMenuBoundsService(_settingsService);
 
         _mainWindow = new MainWindow(
             _settingsService,
@@ -108,12 +110,13 @@ public partial class App : System.Windows.Application
             _startMenuService,
             _webSuggestionService,
             _iconCacheService,
-            _actionExecutor
+            _actionExecutor,
+            _boundsService
         );
         MainWindow = _mainWindow;
         _mainWindow.PreWarm();
 
-        _winKeyHookService = new WinKeyHookService(_settingsService);
+        _winKeyHookService = new WinKeyHookService(_settingsService, _boundsService);
         _winKeyHookService.SetMainWindowHandle(new System.Windows.Interop.WindowInteropHelper(_mainWindow).Handle);
         _winKeyHookService.SingleWinKeyTapped += () =>
         {
@@ -244,12 +247,16 @@ public partial class App : System.Windows.Application
         var webService = new WebSuggestionService(settings);
         var iconService = new IconCacheService();
         var actionExecutor = new ActionExecutorService(everything);
+        var boundsService = new StartMenuBoundsService(settings);
 
-        var window = new MainWindow(settings, everything, startMenu, webService, iconService, actionExecutor);
+        var window = new MainWindow(settings, everything, startMenu, webService, iconService, actionExecutor, boundsService);
         window.PreWarm();
         window.RevealAndRaiseTaskbar();
         window.PositionLikeStartMenu();
         window.ResultsListBox.UpdateLayout();
+
+        var placement1080p = boundsService.CalculatePlacementForDisplay(1920, 1080, new Rect(0, 0, 1920, 1032), 48);
+        var placement1440p = boundsService.CalculatePlacementForDisplay(2560, 1440, new Rect(0, 0, 2560, 1392), 48);
 
         double firstSelectableRowHeight = 0;
         for (int i = 0; i < window.ResultsListBox.Items.Count; i++)
@@ -271,7 +278,7 @@ public partial class App : System.Windows.Application
         var apps = startMenu.QueryApps("电脑", 5);
         var sysSettings = startMenu.QuerySettings("任务栏", 5);
 
-        using var hook = new WinKeyHookService(settings);
+        using var hook = new WinKeyHookService(settings, boundsService);
         hook.Start();
         hook.Stop();
 
@@ -290,7 +297,9 @@ public partial class App : System.Windows.Application
         stdout.WriteLine($"[SelfTest] Everything Query Elapsed: {querySw.Elapsed.TotalMilliseconds:F2} ms");
         stdout.WriteLine($"[SelfTest] Apps('电脑') Returned={apps.Count}, Settings('任务栏') Returned={sysSettings.Count}");
         stdout.WriteLine($"[SelfTest] ShowInTaskbar={window.ShowInTaskbar}");
-        stdout.WriteLine($"[SelfTest] WindowBounds=({window.Left:F1}, {window.Top:F1}, {window.Width:F1}x{window.Height:F1}), ScreenHeight={SystemParameters.PrimaryScreenHeight:F1}");
+        stdout.WriteLine($"[SelfTest] WindowBounds=({window.Left:F1}, {window.Top:F1}, {window.Width:F1}x{window.Height:F1}), ScreenHeight={SystemParameters.PrimaryScreenHeight:F1}, Source={boundsService.LastPlacementSource}");
+        stdout.WriteLine($"[SelfTest] Adaptive1080p Card=({placement1080p.CardWidthDip:F0}x{placement1080p.CardHeightDip:F0}), Window=({placement1080p.WindowWidthDip:F0}x{placement1080p.WindowHeightDip:F0}), Scale={placement1080p.UiScaleFactor:F2}");
+        stdout.WriteLine($"[SelfTest] Adaptive1440p Card=({placement1440p.CardWidthDip:F0}x{placement1440p.CardHeightDip:F0}), Window=({placement1440p.WindowWidthDip:F0}x{placement1440p.WindowHeightDip:F0}), Scale={placement1440p.UiScaleFactor:F2}");
         stdout.WriteLine($"[SelfTest] FirstSelectableRowHeight={firstSelectableRowHeight:F1} px");
         stdout.WriteLine($"[SelfTest] Memory WorkingSet={workingSetMb:F1} MB, Private={privateMb:F1} MB, ManagedHeap={managedMb:F1} MB, Handles={selfProc.HandleCount}, Threads={selfProc.Threads.Count}");
         stdout.WriteLine($"[SelfTest] Total SelfTest Elapsed: {sw.Elapsed.TotalMilliseconds:F2} ms");

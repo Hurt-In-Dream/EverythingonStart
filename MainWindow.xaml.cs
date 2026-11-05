@@ -35,6 +35,7 @@ public partial class MainWindow : Window
     private readonly WebSuggestionService _webSuggestionService;
     private readonly IconCacheService _iconCacheService;
     private readonly ActionExecutorService _actionExecutor;
+    private readonly StartMenuBoundsService _boundsService;
     private readonly DispatcherTimer _taskbarKeepTopTimer;
     private int _taskbarKeepTopTicksRemaining;
     private long _openingGraceUntilTick;
@@ -55,7 +56,8 @@ public partial class MainWindow : Window
         StartMenuIndexService startMenuService,
         WebSuggestionService webSuggestionService,
         IconCacheService iconCacheService,
-        ActionExecutorService actionExecutor
+        ActionExecutorService actionExecutor,
+        StartMenuBoundsService boundsService
     )
     {
         _settingsService = settingsService;
@@ -64,6 +66,7 @@ public partial class MainWindow : Window
         _webSuggestionService = webSuggestionService;
         _iconCacheService = iconCacheService;
         _actionExecutor = actionExecutor;
+        _boundsService = boundsService;
 
         InitializeComponent();
         ResultsListBox.ItemsSource = _entries;
@@ -332,44 +335,19 @@ public partial class MainWindow : Window
 
     public void PositionLikeStartMenu()
     {
-        double screenWidth = SystemParameters.PrimaryScreenWidth;
-        double screenHeight = SystemParameters.PrimaryScreenHeight;
-        var workArea = SystemParameters.WorkArea;
-
-        double taskbarHeightDip = 48.0;
-        var taskbarHwnd = FindWindowW("Shell_TrayWnd", null);
-        if (taskbarHwnd != IntPtr.Zero && GetWindowRect(taskbarHwnd, out var tbRect))
-        {
-            uint dpi = GetDpiForWindow(taskbarHwnd);
-            double dpiScale = dpi > 0 ? dpi / 96.0 : 1.0;
-            int rawHeight = tbRect.Bottom - tbRect.Top;
-            int rawWidth = tbRect.Right - tbRect.Left;
-            if (rawWidth >= rawHeight && rawHeight > 0)
-            {
-                taskbarHeightDip = Math.Clamp(rawHeight / dpiScale, 32.0, 96.0);
-            }
-        }
-
-        double usableBottom = Math.Min(workArea.Bottom, screenHeight - taskbarHeightDip);
-        double maxWindowHeight = Math.Max(560.0, usableBottom - workArea.Top - 8.0);
-        Width = 854.0;
-        Height = Math.Min(886.0, maxWindowHeight);
-
-        bool centerAligned = IsTaskbarCentered();
-        if (centerAligned)
-            Left = Math.Round((screenWidth - Width) / 2.0);
-        else
-            Left = workArea.Left + 2.0;
-
-        // RootCardBorder 底部自带 10px 阴影 Margin，usableBottom - Height 使可视卡片底边精确距任务栏 10px
-        Top = Math.Round(Math.Max(workArea.Top + 2.0, usableBottom - Height));
+        var placement = _boundsService.CalculatePlacement();
+        ApplyPlacement(placement);
     }
 
-    private static bool IsTaskbarCentered()
+    public void ApplyPlacement(StartMenuPlacement placement)
     {
-        using var key = Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced");
-        var val = key?.GetValue("TaskbarAl");
-        return val is int intVal ? intVal != 0 : true;
+        Width = placement.WindowWidthDip;
+        Height = placement.WindowHeightDip;
+        Left = placement.WindowLeftDip;
+        Top = placement.WindowTopDip;
+
+        ContentUiScaleTransform.ScaleX = placement.UiScaleFactor;
+        ContentUiScaleTransform.ScaleY = placement.UiScaleFactor;
     }
 
     private void ActivateWindowForcefully()

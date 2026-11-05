@@ -29,6 +29,7 @@ public sealed class WinKeyHookService : IDisposable
     private const int ASFW_ANY = -1;
 
     private readonly AppSettingsService _settingsService;
+    private readonly StartMenuBoundsService _boundsService;
     private readonly LowLevelKeyboardProc _hookProc;
     private readonly IAppVisibility? _appVisibility;
     private IntPtr _hookHandle;
@@ -45,9 +46,10 @@ public sealed class WinKeyHookService : IDisposable
     public event Action<string>? StartMenuTypingIntercepted;
     public event Action<string>? AdditionalTypingIntercepted;
 
-    public WinKeyHookService(AppSettingsService settingsService)
+    public WinKeyHookService(AppSettingsService settingsService, StartMenuBoundsService boundsService)
     {
         _settingsService = settingsService;
+        _boundsService = boundsService;
         _hookProc = HookCallback;
         _appVisibility = CreateAppVisibilityInstance();
     }
@@ -129,6 +131,11 @@ public sealed class WinKeyHookService : IDisposable
                             bool wasAlreadyOpen = IsNativeStartMenuOpen();
                             _startMenuSessionArmed = !wasAlreadyOpen;
                             _lastSingleWinReleaseTick = Environment.TickCount64;
+                            if (_startMenuSessionArmed)
+                            {
+                                ScheduleStartMenuBoundsProbe();
+                            }
+
                             SingleWinKeyTapped?.Invoke();
                         }
                     }
@@ -159,6 +166,12 @@ public sealed class WinKeyHookService : IDisposable
                             _startMenuSessionArmed = false;
                             _handoverWindowUntilTick = now + 260;
 
+                            var cur = _settingsService.Current;
+                            if (cur.CachedStartMenuCardWidthDip <= 0 || cur.CachedStartMenuCardHeightDip <= 0)
+                            {
+                                _boundsService.TryCaptureOpenStartMenuBounds(GetForegroundWindow());
+                            }
+
                             // 保持当前前台为 StartMenuExperienceHost 时发送 Esc，使其立即收到按键并隐藏开始菜单
                             DismissNativeStartMenu();
                             AllowSetForegroundWindow(ASFW_ANY);
@@ -172,6 +185,27 @@ public sealed class WinKeyHookService : IDisposable
         }
 
         return CallNextHookEx(_hookHandle, nCode, wParam, lParam);
+    }
+
+    private void ScheduleStartMenuBoundsProbe()
+    {
+        _ = Task.Run(async () =>
+        {
+            await Task.Delay(220);
+            if (!_startMenuSessionArmed)
+                return;
+
+            System.Windows.Application.Current?.Dispatcher.BeginInvoke(
+                () =>
+                {
+                    if (_startMenuSessionArmed && IsNativeStartMenuOpen())
+                    {
+                        _boundsService.TryCaptureOpenStartMenuBounds(GetForegroundWindow());
+                    }
+                },
+                System.Windows.Threading.DispatcherPriority.Background
+            );
+        });
     }
 
     private static bool IsPrintableKeyCandidate(int vk) =>

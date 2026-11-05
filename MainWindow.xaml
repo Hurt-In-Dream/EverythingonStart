@@ -196,7 +196,10 @@
             <DropShadowEffect BlurRadius="24" ShadowDepth="6" Opacity="0.55" Color="#000000" />
         </Border.Effect>
 
-        <Grid Margin="22,17,22,18">
+        <Grid x:Name="RootContentGrid" Margin="22,17,22,18">
+            <Grid.LayoutTransform>
+                <ScaleTransform x:Name="ContentUiScaleTransform" ScaleX="1" ScaleY="1" />
+            </Grid.LayoutTransform>
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
@@ -337,9 +340,9 @@
             <!-- 第三行：左右双栏主面板 -->
             <Grid Grid.Row="2">
                 <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="354" />
+                    <ColumnDefinition Width="45.5*" />
                     <ColumnDefinition Width="12" />
-                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="54.5*" />
                 </Grid.ColumnDefinitions>
 
                 <!-- 左栏：分组与搜索结果虚拟化列表 -->
