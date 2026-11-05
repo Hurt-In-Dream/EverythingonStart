@@ -39,6 +39,9 @@ public partial class MainWindow : Window
     private readonly ActionExecutorService _actionExecutor;
     private readonly StartMenuBoundsService _boundsService;
     private readonly DispatcherTimer _taskbarKeepTopTimer;
+    private readonly DispatcherTimer _inputHandoverFocusTimer;
+    private long _inputHandoverFocusReadySinceTick;
+    private WinKeyHookService? _winKeyHookService;
     private int _taskbarKeepTopTicksRemaining;
     private long _openingGraceUntilTick;
     private long _ignoreEscapeUntilTick;
@@ -73,6 +76,12 @@ public partial class MainWindow : Window
         InitializeComponent();
         ResultsListBox.ItemsSource = _entries;
 
+        _inputHandoverFocusTimer = new DispatcherTimer(DispatcherPriority.Input)
+        {
+            Interval = TimeSpan.FromMilliseconds(35)
+        };
+        _inputHandoverFocusTimer.Tick += (_, _) => RetryInputHandoverFocus();
+
         _taskbarKeepTopTimer = new DispatcherTimer
         {
             Interval = TimeSpan.FromMilliseconds(60)
@@ -98,6 +107,11 @@ public partial class MainWindow : Window
 
         UpdateEngineBadge();
         PopulateDefaultLandingEntries();
+    }
+
+    public void AttachWinKeyHookService(WinKeyHookService hookService)
+    {
+        _winKeyHookService = hookService;
     }
 
     protected override void OnSourceInitialized(EventArgs e)
@@ -199,23 +213,8 @@ public partial class MainWindow : Window
             SearchTextBox.Text = initialText!;
             SearchTextBox.CaretIndex = SearchTextBox.Text.Length;
 
-            var focusTimer = new DispatcherTimer
-            {
-                Interval = TimeSpan.FromMilliseconds(32)
-            };
-            focusTimer.Tick += (_, _) =>
-            {
-                focusTimer.Stop();
-                if (!IsVisible)
-                    return;
-
-                ActivateWindowForcefully();
-                RevealAndRaiseTaskbar();
-                SearchTextBox.Focus();
-                Keyboard.Focus(SearchTextBox);
-                SearchTextBox.CaretIndex = SearchTextBox.Text.Length;
-            };
-            focusTimer.Start();
+            _inputHandoverFocusReadySinceTick = 0;
+            _inputHandoverFocusTimer.Start();
         }
         else
         {
@@ -241,6 +240,38 @@ public partial class MainWindow : Window
         SearchTextBox.Text += extraText;
         SearchTextBox.CaretIndex = SearchTextBox.Text.Length;
         SearchTextBox.Focus();
+    }
+
+    private void RetryInputHandoverFocus()
+    {
+        var hook = _winKeyHookService;
+        if (!IsVisible || hook?.IsInputHandoverPending != true)
+        {
+            _inputHandoverFocusTimer.Stop();
+            return;
+        }
+
+        var hwnd = new WindowInteropHelper(this).Handle;
+        if (GetForegroundWindow() == hwnd && SearchTextBox.IsKeyboardFocused)
+        {
+            long now = Environment.TickCount64;
+            if (_inputHandoverFocusReadySinceTick == 0)
+                _inputHandoverFocusReadySinceTick = now;
+
+            // 开始菜单收起时可能再次抢走焦点，连续稳定后才结束按键缓冲。
+            if (now - _inputHandoverFocusReadySinceTick >= 120)
+            {
+                hook.CompleteInputHandover();
+                _inputHandoverFocusTimer.Stop();
+            }
+            return;
+        }
+
+        _inputHandoverFocusReadySinceTick = 0;
+        ActivateWindowForcefully();
+        SearchTextBox.Focus();
+        Keyboard.Focus(SearchTextBox);
+        SearchTextBox.CaretIndex = SearchTextBox.Text.Length;
     }
 
     private void PlayPopupShowAnimation()
@@ -275,6 +306,8 @@ public partial class MainWindow : Window
 
     public void HidePopup()
     {
+        _inputHandoverFocusTimer.Stop();
+        _winKeyHookService?.CompleteInputHandover();
         if (!IsVisible)
             return;
 

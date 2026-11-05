@@ -118,6 +118,7 @@ public partial class App : System.Windows.Application
 
         _winKeyHookService = new WinKeyHookService(_settingsService, _boundsService);
         _winKeyHookService.SetMainWindowHandle(new System.Windows.Interop.WindowInteropHelper(_mainWindow).Handle);
+        _mainWindow.AttachWinKeyHookService(_winKeyHookService);
         _winKeyHookService.SingleWinKeyTapped += () =>
         {
             Dispatcher.BeginInvoke(() =>

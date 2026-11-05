@@ -1,0 +1,71 @@
+using EverythingonStart.Services;
+using System.Windows.Input;
+using System.Windows.Interop;
+
+internal sealed class FocusProbe
+{
+    private readonly WinKeyHookService _winKeyHookService;
+    private readonly FakeTimer _inputHandoverFocusTimer = new();
+    #pragma warning disable CS0169
+    private long _inputHandoverFocusReadySinceTick;
+    #pragma warning restore CS0169
+    private readonly List<IntPtr> _demotedFullscreenWindows = [];
+    public bool IsVisible = true;
+    public bool CanAcquireFocus;
+    public FakeTextBox SearchTextBox { get; }
+
+    public FocusProbe(WinKeyHookService hook)
+    {
+        _winKeyHookService = hook;
+        SearchTextBox = new FakeTextBox(this);
+    }
+
+    public void Tick()
+    {
+        if (_inputHandoverFocusTimer.Running) RetryInputHandoverFocus();
+    }
+
+    private static IntPtr GetForegroundWindow() => TestNative.Foreground;
+    private void ActivateWindowForcefully()
+    {
+        if (CanAcquireFocus) TestNative.Foreground = new(3);
+    }
+    private void RevealAndRaiseTaskbar() { }
+    private void RaiseTaskbarAsyncIfFullscreenActive(IntPtr hwnd) { }
+
+    /* REAL_FOCUS_METHOD */
+}
+
+internal sealed class FakeTimer
+{
+    public bool Running = true;
+    public void Stop() => Running = false;
+}
+
+internal sealed class FakeTextBox(FocusProbe owner)
+{
+    public bool IsKeyboardFocused;
+    public string Text = "a";
+    public int CaretIndex;
+    public void Focus()
+    {
+        IsKeyboardFocused = owner.CanAcquireFocus;
+    }
+}
+
+namespace System.Windows.Input
+{
+    internal static class Keyboard
+    {
+        public static void Focus(FakeTextBox box) => box.Focus();
+    }
+}
+
+namespace System.Windows.Interop
+{
+    internal sealed class WindowInteropHelper
+    {
+        public WindowInteropHelper(FocusProbe owner) { }
+        public IntPtr Handle => new(3);
+    }
+}

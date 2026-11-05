@@ -1,0 +1,278 @@
+using System.Reflection;
+using System.Runtime.InteropServices;
+using EverythingonStart.Services;
+
+public static class TestNative
+{
+    public static long Now = 1000;
+    public static IntPtr Foreground = new(1);
+    public static bool ControlDown;
+    public static bool TextFocus;
+}
+
+internal static class Program
+{
+    private static int _failed;
+    private static int _total;
+
+    private static int Main()
+    {
+        using (var s = new Scenario())
+        {
+            s.Begin();
+            s.Key('B', delay: 400);
+            s.Key('C', delay: 300);
+            Check("delayed-foreground", s, "abc", "", "");
+        }
+        using (var s = new Scenario())
+        {
+            s.Begin();
+            TestNative.Foreground = new(3);
+            s.Key('B', delay: 30);
+            s.Key('C', delay: 30);
+            Check("foreground-without-text-focus", s, "abc", "", "");
+        }
+        using (var s = new Scenario())
+        {
+            s.Begin();
+            s.Key('B', delay: 20);
+            s.Key('C', delay: 20);
+            Check("fast-typing", s, "abc", "", "");
+        }
+        using (var s = new Scenario())
+        {
+            s.Begin(holdFirstKey: true);
+            bool blocked = s.Send('A', up: true) == new IntPtr(1);
+            Check("paired-key-up", s, "a", "", "", blocked);
+        }
+        using (var s = new Scenario())
+        {
+            s.Begin(holdFirstKey: true);
+            TestNative.Foreground = new(3);
+            TestNative.TextFocus = true;
+            s.Complete();
+            bool repeatBlocked = s.Send('A') == new IntPtr(1);
+            bool upBlocked = s.Send('A', up: true) == new IntPtr(1);
+            Check("held-key-repeat-paired", s, "aa", "", "", repeatBlocked && upBlocked);
+        }
+        using (var s = new Scenario())
+        {
+            s.Begin();
+            TestNative.Foreground = new(3);
+            TestNative.TextFocus = true;
+            s.Complete();
+            s.Key('B', delay: 50);
+            Check("confirmed-text-focus", s, "ab", "", "");
+        }
+        using (var s = new Scenario())
+        {
+            s.Begin();
+            s.Complete();
+            s.Key('B', delay: 50);
+            Check("hidden-popup-cancels", s, "a", "b", "");
+        }
+        using (var s = new Scenario())
+        {
+            s.Begin();
+            s.Key('B', delay: 2000);
+            Check("bounded-timeout", s, "a", "b", "");
+        }
+        using (var s = new Scenario())
+        {
+            s.Begin();
+            s.Send(0x5B);
+            s.Key('E');
+            s.Send(0x5B, up: true);
+            s.Key('B', delay: 50);
+            Check("new-win-shortcut-cancels", s, "a", "eb", "");
+        }
+        using (var s = new Scenario())
+        {
+            s.Send(0x5B);
+            s.Key('E');
+            s.Send(0x5B, up: true);
+            Check("win-e-preserved", s, "", "e", "");
+        }
+        using (var s = new Scenario())
+        {
+            s.Begin();
+            TestNative.ControlDown = true;
+            s.Key('C');
+            Check("ctrl-shortcut-preserved", s, "a", "c", "");
+        }
+        using (var s = new Scenario())
+        {
+            s.Begin();
+            s.Key('B', injected: true);
+            Check("injected-input-preserved", s, "a", "b", "");
+        }
+        using (var s = new Scenario())
+        {
+            s.Begin();
+            var probe = new FocusProbe(s.Hook);
+            probe.Tick();
+            TestNative.Now += 400;
+            probe.CanAcquireFocus = true;
+            probe.Tick();
+            TestNative.Now += 35;
+            probe.Tick();
+            TestNative.Now += 140;
+            probe.Tick();
+            Check("focus-retry-after-initial-failure", s, "a", "", "",
+                TestNative.Foreground == new IntPtr(3) && probe.SearchTextBox.IsKeyboardFocused && !s.Pending);
+        }
+        using (var s = new Scenario())
+        {
+            s.Begin();
+            var probe = new FocusProbe(s.Hook) { CanAcquireFocus = true };
+            probe.Tick();
+            TestNative.Now += 35;
+            probe.Tick();
+            TestNative.Now += 35;
+            probe.Tick();
+            bool pendingBeforeStableFocus = s.Pending;
+            TestNative.Foreground = new(1);
+            probe.SearchTextBox.IsKeyboardFocused = false;
+            probe.CanAcquireFocus = false;
+            TestNative.Now += 30;
+            probe.Tick();
+            bool pendingAfterFocusStolen = s.Pending;
+            TestNative.Now += 300;
+            probe.CanAcquireFocus = true;
+            probe.Tick();
+            TestNative.Now += 35;
+            probe.Tick();
+            TestNative.Now += 140;
+            probe.Tick();
+            Check("stable-text-focus-handshake", s, "a", "", "",
+                pendingBeforeStableFocus && pendingAfterFocusStolen && !s.Pending && probe.SearchTextBox.IsKeyboardFocused);
+        }
+        Console.WriteLine($"Summary: {_total - _failed}/{_total} passed");
+        return _failed == 0 ? 0 : 1;
+    }
+
+    private static void Check(string name, Scenario s, string search, string other, string unfocused, bool extra = true)
+    {
+        _total++;
+        bool pass = s.Search == search && s.Other == other && s.Unfocused == unfocused && extra;
+        if (!pass) _failed++;
+        Console.WriteLine($"{(pass ? "PASS" : "FAIL")} {name}: search='{s.Search}', other='{s.Other}', unfocused='{s.Unfocused}', extra={extra}");
+    }
+
+    private sealed class Scenario : IDisposable
+    {
+        private readonly WinKeyHookService _hook;
+        private readonly MethodInfo _callback = typeof(WinKeyHookService).GetMethod("HookCallback", BindingFlags.Instance | BindingFlags.NonPublic)!;
+        public string Search = "";
+        public string Other = "";
+        public string Unfocused = "";
+        public WinKeyHookService Hook => _hook;
+        public bool Pending => (bool?)typeof(WinKeyHookService).GetProperty("IsInputHandoverPending")?.GetValue(_hook)
+            ?? TestNative.Now < (long)typeof(WinKeyHookService).GetField("_handoverWindowUntilTick", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(_hook)!;
+
+        public Scenario()
+        {
+            TestNative.Now = 1000;
+            TestNative.Foreground = new(1);
+            TestNative.ControlDown = false;
+            TestNative.TextFocus = false;
+            _hook = new WinKeyHookService(new AppSettingsService(), new StartMenuBoundsService());
+            _hook.SetMainWindowHandle(new(3));
+            _hook.StartMenuTypingIntercepted += text => Search += text;
+            _hook.AdditionalTypingIntercepted += text => Search += text;
+        }
+
+        public void Begin(bool holdFirstKey = false)
+        {
+            Send(0x5B);
+            Send(0x5B, up: true);
+            TestNative.Foreground = new(2);
+            Key('A', release: !holdFirstKey);
+            // Esc closing StartMenuExperienceHost returns focus to the previously open app.
+            TestNative.Foreground = new(1);
+        }
+
+        public void Complete() => typeof(WinKeyHookService).GetMethod("CompleteInputHandover")?.Invoke(_hook, null);
+
+        public void Key(char key, int delay = 0, bool injected = false, bool release = true)
+        {
+            TestNative.Now += delay;
+            IntPtr result = Send(key, injected: injected);
+            if (release) Send(key, up: true, injected: injected);
+            if (result == new IntPtr(1)) return;
+            string text = char.ToLowerInvariant(key).ToString();
+            if (TestNative.Foreground == new IntPtr(3))
+            {
+                if (TestNative.TextFocus) Search += text;
+                else Unfocused += text;
+            }
+            else Other += text;
+        }
+
+        public IntPtr Send(int key, bool up = false, bool injected = false)
+        {
+            var data = new KeyboardData { vkCode = (uint)key, flags = injected ? 0x10u : 0u };
+            IntPtr address = Marshal.AllocHGlobal(Marshal.SizeOf<KeyboardData>());
+            try
+            {
+                Marshal.StructureToPtr(data, address, false);
+                return (IntPtr)_callback.Invoke(_hook, [0, new IntPtr(up ? 0x101 : 0x100), address])!;
+            }
+            finally { Marshal.FreeHGlobal(address); }
+        }
+
+        public void Dispose() => _hook.Dispose();
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct KeyboardData
+    {
+        public uint vkCode;
+        public uint scanCode;
+        public uint flags;
+        public uint time;
+        public UIntPtr dwExtraInfo;
+    }
+}
+
+namespace EverythingonStart.Models
+{
+    public enum WinKeyTriggerMode { DirectOnSingleWinTap, InterceptTypingInStartMenu }
+}
+
+namespace EverythingonStart.Services
+{
+    public sealed class AppSettingsService
+    {
+        public Settings Current { get; } = new();
+        public sealed class Settings
+        {
+            public Models.WinKeyTriggerMode TriggerMode = Models.WinKeyTriggerMode.InterceptTypingInStartMenu;
+            public double CachedStartMenuCardWidthDip = 600;
+            public double CachedStartMenuCardHeightDip = 600;
+        }
+    }
+    public sealed class StartMenuBoundsService
+    {
+        public bool HasValidCacheForCurrentScreen() => true;
+        public bool TryCaptureOpenStartMenuBounds(IntPtr hwnd) => true;
+    }
+}
+
+namespace System.Windows
+{
+    public sealed class Application
+    {
+        public static Application? Current => null;
+        public Threading.Dispatcher Dispatcher { get; } = new();
+    }
+}
+
+namespace System.Windows.Threading
+{
+    public enum DispatcherPriority { Background }
+    public sealed class Dispatcher
+    {
+        public void BeginInvoke(Action action, DispatcherPriority priority) { }
+    }
+}

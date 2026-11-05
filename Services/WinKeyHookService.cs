@@ -41,6 +41,17 @@ public sealed class WinKeyHookService : IDisposable
     private bool _startMenuSessionArmed;
     private long _lastSingleWinReleaseTick;
     private long _handoverWindowUntilTick;
+    private bool _inputHandoverPending;
+    private readonly HashSet<int> _interceptedKeyUps = [];
+
+    public bool IsInputHandoverPending =>
+        _inputHandoverPending && Environment.TickCount64 < _handoverWindowUntilTick;
+
+    public void CompleteInputHandover()
+    {
+        _inputHandoverPending = false;
+        _handoverWindowUntilTick = 0;
+    }
 
     public event Action? SingleWinKeyTapped;
     public event Action<string>? StartMenuTypingIntercepted;
@@ -81,6 +92,8 @@ public sealed class WinKeyHookService : IDisposable
 
     public void Stop()
     {
+        CompleteInputHandover();
+        _interceptedKeyUps.Clear();
         if (_hookHandle == IntPtr.Zero)
             return;
 
@@ -102,10 +115,15 @@ public sealed class WinKeyHookService : IDisposable
                 bool isKeyUp = msg is WM_KEYUP or WM_SYSKEYUP;
                 int vk = (int)info.vkCode;
 
+                // 被接管的按键必须成对吞掉，避免 KeyUp 落入切换前的应用。
+                if (isKeyUp && _interceptedKeyUps.Remove(vk))
+                    return 1;
+
                 if (vk is VK_LWIN or VK_RWIN)
                 {
                     if (isKeyDown)
                     {
+                        CompleteInputHandover();
                         if (!_winKeyDown)
                         {
                             _winKeyDown = true;
@@ -151,12 +169,11 @@ public sealed class WinKeyHookService : IDisposable
                     {
                         long now = Environment.TickCount64;
 
-                        // 如果正在从开始菜单切换到 EverythingonStart 的焦点的短暂窗口期内，继续捕获快速连打的按键
-                        if (now < _handoverWindowUntilTick &&
-                            _mainWindowHwnd != IntPtr.Zero &&
-                            GetForegroundWindow() != _mainWindowHwnd &&
+                        // 直到搜索框确认获得稳定的键盘焦点才放行，不能仅凭前台 HWND 或 260ms 超时判断。
+                        if ((IsInputHandoverPending || _interceptedKeyUps.Contains(vk)) &&
                             TryMapPrintableKey(vk, out var extraChar))
                         {
+                            _interceptedKeyUps.Add(vk);
                             AdditionalTypingIntercepted?.Invoke(extraChar);
                             return 1;
                         }
@@ -164,7 +181,10 @@ public sealed class WinKeyHookService : IDisposable
                         if (ShouldInterceptStartMenuTyping(now) && TryMapPrintableKey(vk, out var typedChar))
                         {
                             _startMenuSessionArmed = false;
-                            _handoverWindowUntilTick = now + 260;
+                            _inputHandoverPending = true;
+                            // 有界保护：窗口无法激活时不能无限接管其他应用的输入。
+                            _handoverWindowUntilTick = now + 1500;
+                            _interceptedKeyUps.Add(vk);
 
                             var cur = _settingsService.Current;
                             if (cur.CachedStartMenuCardWidthDip <= 0 || cur.CachedStartMenuCardHeightDip <= 0)
