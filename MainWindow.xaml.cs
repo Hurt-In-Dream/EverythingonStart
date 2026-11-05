@@ -17,7 +17,9 @@ namespace EverythingonStart;
 public partial class MainWindow : Window
 {
     private static readonly IntPtr HWND_TOPMOST = new(-1);
-    private const int GWLP_HWNDPARENT = -8;
+    private const int GWL_EXSTYLE = -20;
+    private const long WS_EX_TOOLWINDOW = 0x00000080L;
+    private const long WS_EX_APPWINDOW = 0x00040000L;
     private const uint SWP_NOSIZE = 0x0001;
     private const uint SWP_NOMOVE = 0x0002;
     private const uint SWP_NOACTIVATE = 0x0010;
@@ -105,9 +107,30 @@ public partial class MainWindow : Window
         var hwnd = new WindowInteropHelper(this).Handle;
         if (hwnd != IntPtr.Zero)
         {
-            SetWindowLongPtrW(hwnd, GWLP_HWNDPARENT, IntPtr.Zero);
-            RemoveFromTaskbarTabList(hwnd);
+            ApplyNoTaskbarWindowStyle(hwnd);
         }
+    }
+
+    public bool HasToolWindowExtendedStyle()
+    {
+        var hwnd = new WindowInteropHelper(this).Handle;
+        if (hwnd == IntPtr.Zero)
+            return false;
+
+        long exStyle = GetWindowLongPtrW(hwnd, GWL_EXSTYLE).ToInt64();
+        return (exStyle & WS_EX_TOOLWINDOW) != 0 && (exStyle & WS_EX_APPWINDOW) == 0;
+    }
+
+    private void ApplyNoTaskbarWindowStyle(IntPtr hwnd)
+    {
+        long exStyle = GetWindowLongPtrW(hwnd, GWL_EXSTYLE).ToInt64();
+        long targetExStyle = (exStyle | WS_EX_TOOLWINDOW) & ~WS_EX_APPWINDOW;
+        if (targetExStyle != exStyle)
+        {
+            SetWindowLongPtrW(hwnd, GWL_EXSTYLE, new IntPtr(targetExStyle));
+        }
+
+        RemoveFromTaskbarTabList(hwnd);
     }
 
     private void RemoveFromTaskbarTabList(IntPtr hwnd)
@@ -282,8 +305,7 @@ public partial class MainWindow : Window
         var selfHwnd = new WindowInteropHelper(this).Handle;
         if (selfHwnd != IntPtr.Zero)
         {
-            SetWindowLongPtrW(selfHwnd, GWLP_HWNDPARENT, IntPtr.Zero);
-            RemoveFromTaskbarTabList(selfHwnd);
+            ApplyNoTaskbarWindowStyle(selfHwnd);
             SetWindowPos(
                 selfHwnd,
                 HWND_TOPMOST,
@@ -1203,6 +1225,9 @@ public partial class MainWindow : Window
         public RECT rc;
         public IntPtr lParam;
     }
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr GetWindowLongPtrW(IntPtr hWnd, int nIndex);
 
     [DllImport("user32.dll")]
     private static extern IntPtr SetWindowLongPtrW(IntPtr hWnd, int nIndex, IntPtr dwNewLong);

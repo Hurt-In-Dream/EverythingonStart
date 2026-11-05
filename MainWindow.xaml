@@ -45,7 +45,7 @@
             </Setter>
         </Style>
 
-        <!-- 顶部胶囊标签 RadioButton 样式 -->
+        <!-- 顶部胶囊标签 RadioButton 样式（带鼠标浮动高亮与上浮动画） -->
         <Style x:Key="CategoryPillStyle" TargetType="RadioButton">
             <Setter Property="Foreground" Value="#E4E6EB" />
             <Setter Property="Background" Value="#2D2F34" />
@@ -62,12 +62,80 @@
                                 CornerRadius="14"
                                 Padding="{TemplateBinding Padding}"
                                 BorderThickness="1"
-                                BorderBrush="#14FFFFFF">
+                                BorderBrush="#14FFFFFF"
+                                RenderTransformOrigin="0.5,0.5">
+                            <Border.RenderTransform>
+                                <TransformGroup>
+                                    <ScaleTransform x:Name="PillScale" ScaleX="1" ScaleY="1" />
+                                    <TranslateTransform x:Name="PillTranslate" X="0" Y="0" />
+                                </TransformGroup>
+                            </Border.RenderTransform>
                             <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="PillBorder" Property="Background" Value="#3A3D44" />
+                                <Setter TargetName="PillBorder" Property="Background" Value="#3B3E46" />
+                                <Setter TargetName="PillBorder" Property="BorderBrush" Value="#2AFFFFFF" />
+                                <Trigger.EnterActions>
+                                    <BeginStoryboard>
+                                        <Storyboard>
+                                            <DoubleAnimation Storyboard.TargetName="PillTranslate"
+                                                             Storyboard.TargetProperty="Y"
+                                                             To="-1.8"
+                                                             Duration="0:0:0.15">
+                                                <DoubleAnimation.EasingFunction>
+                                                    <CubicEase EasingMode="EaseOut" />
+                                                </DoubleAnimation.EasingFunction>
+                                            </DoubleAnimation>
+                                            <DoubleAnimation Storyboard.TargetName="PillScale"
+                                                             Storyboard.TargetProperty="ScaleX"
+                                                             To="1.035"
+                                                             Duration="0:0:0.15">
+                                                <DoubleAnimation.EasingFunction>
+                                                    <CubicEase EasingMode="EaseOut" />
+                                                </DoubleAnimation.EasingFunction>
+                                            </DoubleAnimation>
+                                            <DoubleAnimation Storyboard.TargetName="PillScale"
+                                                             Storyboard.TargetProperty="ScaleY"
+                                                             To="1.035"
+                                                             Duration="0:0:0.15">
+                                                <DoubleAnimation.EasingFunction>
+                                                    <CubicEase EasingMode="EaseOut" />
+                                                </DoubleAnimation.EasingFunction>
+                                            </DoubleAnimation>
+                                        </Storyboard>
+                                    </BeginStoryboard>
+                                </Trigger.EnterActions>
+                                <Trigger.ExitActions>
+                                    <BeginStoryboard>
+                                        <Storyboard>
+                                            <DoubleAnimation Storyboard.TargetName="PillTranslate"
+                                                             Storyboard.TargetProperty="Y"
+                                                             To="0"
+                                                             Duration="0:0:0.18">
+                                                <DoubleAnimation.EasingFunction>
+                                                    <CubicEase EasingMode="EaseOut" />
+                                                </DoubleAnimation.EasingFunction>
+                                            </DoubleAnimation>
+                                            <DoubleAnimation Storyboard.TargetName="PillScale"
+                                                             Storyboard.TargetProperty="ScaleX"
+                                                             To="1"
+                                                             Duration="0:0:0.18">
+                                                <DoubleAnimation.EasingFunction>
+                                                    <CubicEase EasingMode="EaseOut" />
+                                                </DoubleAnimation.EasingFunction>
+                                            </DoubleAnimation>
+                                            <DoubleAnimation Storyboard.TargetName="PillScale"
+                                                             Storyboard.TargetProperty="ScaleY"
+                                                             To="1"
+                                                             Duration="0:0:0.18">
+                                                <DoubleAnimation.EasingFunction>
+                                                    <CubicEase EasingMode="EaseOut" />
+                                                </DoubleAnimation.EasingFunction>
+                                            </DoubleAnimation>
+                                        </Storyboard>
+                                    </BeginStoryboard>
+                                </Trigger.ExitActions>
                             </Trigger>
                             <Trigger Property="IsChecked" Value="True">
                                 <Setter TargetName="PillBorder" Property="Background" Value="#B4C3D0" />
@@ -81,7 +149,7 @@
             </Setter>
         </Style>
 
-        <!-- 顶部胶囊动作按钮样式（与分类胶囊视觉一致） -->
+        <!-- 顶部胶囊动作按钮样式（与分类胶囊视觉一致，带鼠标浮动高亮与上浮动画） -->
         <Style x:Key="CategoryActionPillButtonStyle" TargetType="Button">
             <Setter Property="Foreground" Value="#E4E6EB" />
             <Setter Property="Background" Value="#2D2F34" />
@@ -98,12 +166,80 @@
                                 CornerRadius="14"
                                 Padding="{TemplateBinding Padding}"
                                 BorderThickness="1"
-                                BorderBrush="#14FFFFFF">
+                                BorderBrush="#14FFFFFF"
+                                RenderTransformOrigin="0.5,0.5">
+                            <Border.RenderTransform>
+                                <TransformGroup>
+                                    <ScaleTransform x:Name="PillScale" ScaleX="1" ScaleY="1" />
+                                    <TranslateTransform x:Name="PillTranslate" X="0" Y="0" />
+                                </TransformGroup>
+                            </Border.RenderTransform>
                             <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="PillBorder" Property="Background" Value="#3A3D44" />
+                                <Setter TargetName="PillBorder" Property="Background" Value="#3B3E46" />
+                                <Setter TargetName="PillBorder" Property="BorderBrush" Value="#2AFFFFFF" />
+                                <Trigger.EnterActions>
+                                    <BeginStoryboard>
+                                        <Storyboard>
+                                            <DoubleAnimation Storyboard.TargetName="PillTranslate"
+                                                             Storyboard.TargetProperty="Y"
+                                                             To="-1.8"
+                                                             Duration="0:0:0.15">
+                                                <DoubleAnimation.EasingFunction>
+                                                    <CubicEase EasingMode="EaseOut" />
+                                                </DoubleAnimation.EasingFunction>
+                                            </DoubleAnimation>
+                                            <DoubleAnimation Storyboard.TargetName="PillScale"
+                                                             Storyboard.TargetProperty="ScaleX"
+                                                             To="1.035"
+                                                             Duration="0:0:0.15">
+                                                <DoubleAnimation.EasingFunction>
+                                                    <CubicEase EasingMode="EaseOut" />
+                                                </DoubleAnimation.EasingFunction>
+                                            </DoubleAnimation>
+                                            <DoubleAnimation Storyboard.TargetName="PillScale"
+                                                             Storyboard.TargetProperty="ScaleY"
+                                                             To="1.035"
+                                                             Duration="0:0:0.15">
+                                                <DoubleAnimation.EasingFunction>
+                                                    <CubicEase EasingMode="EaseOut" />
+                                                </DoubleAnimation.EasingFunction>
+                                            </DoubleAnimation>
+                                        </Storyboard>
+                                    </BeginStoryboard>
+                                </Trigger.EnterActions>
+                                <Trigger.ExitActions>
+                                    <BeginStoryboard>
+                                        <Storyboard>
+                                            <DoubleAnimation Storyboard.TargetName="PillTranslate"
+                                                             Storyboard.TargetProperty="Y"
+                                                             To="0"
+                                                             Duration="0:0:0.18">
+                                                <DoubleAnimation.EasingFunction>
+                                                    <CubicEase EasingMode="EaseOut" />
+                                                </DoubleAnimation.EasingFunction>
+                                            </DoubleAnimation>
+                                            <DoubleAnimation Storyboard.TargetName="PillScale"
+                                                             Storyboard.TargetProperty="ScaleX"
+                                                             To="1"
+                                                             Duration="0:0:0.18">
+                                                <DoubleAnimation.EasingFunction>
+                                                    <CubicEase EasingMode="EaseOut" />
+                                                </DoubleAnimation.EasingFunction>
+                                            </DoubleAnimation>
+                                            <DoubleAnimation Storyboard.TargetName="PillScale"
+                                                             Storyboard.TargetProperty="ScaleY"
+                                                             To="1"
+                                                             Duration="0:0:0.18">
+                                                <DoubleAnimation.EasingFunction>
+                                                    <CubicEase EasingMode="EaseOut" />
+                                                </DoubleAnimation.EasingFunction>
+                                            </DoubleAnimation>
+                                        </Storyboard>
+                                    </BeginStoryboard>
+                                </Trigger.ExitActions>
                             </Trigger>
                             <Trigger Property="IsPressed" Value="True">
                                 <Setter TargetName="PillBorder" Property="Background" Value="#B4C3D0" />
@@ -115,7 +251,7 @@
             </Setter>
         </Style>
 
-        <!-- 图标按钮样式 -->
+        <!-- 图标按钮样式（带鼠标浮动高亮与微缩放动画） -->
         <Style x:Key="IconButtonStyle" TargetType="Button">
             <Setter Property="Background" Value="Transparent" />
             <Setter Property="Foreground" Value="#D4D7DD" />
@@ -129,15 +265,85 @@
                     <ControlTemplate TargetType="Button">
                         <Border x:Name="BtnBorder"
                                 Background="{TemplateBinding Background}"
-                                CornerRadius="6">
+                                BorderThickness="1"
+                                BorderBrush="Transparent"
+                                CornerRadius="6"
+                                RenderTransformOrigin="0.5,0.5">
+                            <Border.RenderTransform>
+                                <TransformGroup>
+                                    <ScaleTransform x:Name="BtnScale" ScaleX="1" ScaleY="1" />
+                                    <TranslateTransform x:Name="BtnTranslate" X="0" Y="0" />
+                                </TransformGroup>
+                            </Border.RenderTransform>
                             <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="BtnBorder" Property="Background" Value="#26FFFFFF" />
+                                <Setter TargetName="BtnBorder" Property="Background" Value="#32353D" />
+                                <Setter TargetName="BtnBorder" Property="BorderBrush" Value="#22FFFFFF" />
+                                <Trigger.EnterActions>
+                                    <BeginStoryboard>
+                                        <Storyboard>
+                                            <DoubleAnimation Storyboard.TargetName="BtnTranslate"
+                                                             Storyboard.TargetProperty="Y"
+                                                             To="-1.2"
+                                                             Duration="0:0:0.14">
+                                                <DoubleAnimation.EasingFunction>
+                                                    <CubicEase EasingMode="EaseOut" />
+                                                </DoubleAnimation.EasingFunction>
+                                            </DoubleAnimation>
+                                            <DoubleAnimation Storyboard.TargetName="BtnScale"
+                                                             Storyboard.TargetProperty="ScaleX"
+                                                             To="1.06"
+                                                             Duration="0:0:0.14">
+                                                <DoubleAnimation.EasingFunction>
+                                                    <CubicEase EasingMode="EaseOut" />
+                                                </DoubleAnimation.EasingFunction>
+                                            </DoubleAnimation>
+                                            <DoubleAnimation Storyboard.TargetName="BtnScale"
+                                                             Storyboard.TargetProperty="ScaleY"
+                                                             To="1.06"
+                                                             Duration="0:0:0.14">
+                                                <DoubleAnimation.EasingFunction>
+                                                    <CubicEase EasingMode="EaseOut" />
+                                                </DoubleAnimation.EasingFunction>
+                                            </DoubleAnimation>
+                                        </Storyboard>
+                                    </BeginStoryboard>
+                                </Trigger.EnterActions>
+                                <Trigger.ExitActions>
+                                    <BeginStoryboard>
+                                        <Storyboard>
+                                            <DoubleAnimation Storyboard.TargetName="BtnTranslate"
+                                                             Storyboard.TargetProperty="Y"
+                                                             To="0"
+                                                             Duration="0:0:0.16">
+                                                <DoubleAnimation.EasingFunction>
+                                                    <CubicEase EasingMode="EaseOut" />
+                                                </DoubleAnimation.EasingFunction>
+                                            </DoubleAnimation>
+                                            <DoubleAnimation Storyboard.TargetName="BtnScale"
+                                                             Storyboard.TargetProperty="ScaleX"
+                                                             To="1"
+                                                             Duration="0:0:0.16">
+                                                <DoubleAnimation.EasingFunction>
+                                                    <CubicEase EasingMode="EaseOut" />
+                                                </DoubleAnimation.EasingFunction>
+                                            </DoubleAnimation>
+                                            <DoubleAnimation Storyboard.TargetName="BtnScale"
+                                                             Storyboard.TargetProperty="ScaleY"
+                                                             To="1"
+                                                             Duration="0:0:0.16">
+                                                <DoubleAnimation.EasingFunction>
+                                                    <CubicEase EasingMode="EaseOut" />
+                                                </DoubleAnimation.EasingFunction>
+                                            </DoubleAnimation>
+                                        </Storyboard>
+                                    </BeginStoryboard>
+                                </Trigger.ExitActions>
                             </Trigger>
                             <Trigger Property="IsPressed" Value="True">
-                                <Setter TargetName="BtnBorder" Property="Background" Value="#18FFFFFF" />
+                                <Setter TargetName="BtnBorder" Property="Background" Value="#24262C" />
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -145,7 +351,7 @@
             </Setter>
         </Style>
 
-        <!-- 右侧详情面板快捷操作按钮样式 -->
+        <!-- 右侧详情面板快捷操作按钮样式（带鼠标浮动高亮卡片与平滑位移） -->
         <Style x:Key="ActionRowButtonStyle" TargetType="Button">
             <Setter Property="Background" Value="Transparent" />
             <Setter Property="Foreground" Value="#ECEEF2" />
@@ -159,17 +365,103 @@
                     <ControlTemplate TargetType="Button">
                         <Border x:Name="RowBorder"
                                 Background="{TemplateBinding Background}"
+                                BorderThickness="1"
+                                BorderBrush="Transparent"
                                 CornerRadius="6"
-                                Padding="{TemplateBinding Padding}">
+                                Padding="{TemplateBinding Padding}"
+                                RenderTransformOrigin="0.5,0.5">
+                            <Border.RenderTransform>
+                                <TransformGroup>
+                                    <ScaleTransform x:Name="RowScale" ScaleX="1" ScaleY="1" />
+                                    <TranslateTransform x:Name="RowTranslate" X="0" Y="0" />
+                                </TransformGroup>
+                            </Border.RenderTransform>
                             <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
                                               VerticalAlignment="Center" />
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="RowBorder" Property="Background" Value="#22FFFFFF" />
+                                <Setter TargetName="RowBorder" Property="Background" Value="#34373F" />
+                                <Setter TargetName="RowBorder" Property="BorderBrush" Value="#22FFFFFF" />
+                                <Trigger.EnterActions>
+                                    <BeginStoryboard>
+                                        <Storyboard>
+                                            <DoubleAnimation Storyboard.TargetName="RowTranslate"
+                                                             Storyboard.TargetProperty="Y"
+                                                             To="-1.5"
+                                                             Duration="0:0:0.15">
+                                                <DoubleAnimation.EasingFunction>
+                                                    <CubicEase EasingMode="EaseOut" />
+                                                </DoubleAnimation.EasingFunction>
+                                            </DoubleAnimation>
+                                            <DoubleAnimation Storyboard.TargetName="RowTranslate"
+                                                             Storyboard.TargetProperty="X"
+                                                             To="2"
+                                                             Duration="0:0:0.15">
+                                                <DoubleAnimation.EasingFunction>
+                                                    <CubicEase EasingMode="EaseOut" />
+                                                </DoubleAnimation.EasingFunction>
+                                            </DoubleAnimation>
+                                            <DoubleAnimation Storyboard.TargetName="RowScale"
+                                                             Storyboard.TargetProperty="ScaleX"
+                                                             To="1.012"
+                                                             Duration="0:0:0.15">
+                                                <DoubleAnimation.EasingFunction>
+                                                    <CubicEase EasingMode="EaseOut" />
+                                                </DoubleAnimation.EasingFunction>
+                                            </DoubleAnimation>
+                                            <DoubleAnimation Storyboard.TargetName="RowScale"
+                                                             Storyboard.TargetProperty="ScaleY"
+                                                             To="1.012"
+                                                             Duration="0:0:0.15">
+                                                <DoubleAnimation.EasingFunction>
+                                                    <CubicEase EasingMode="EaseOut" />
+                                                </DoubleAnimation.EasingFunction>
+                                            </DoubleAnimation>
+                                        </Storyboard>
+                                    </BeginStoryboard>
+                                </Trigger.EnterActions>
+                                <Trigger.ExitActions>
+                                    <BeginStoryboard>
+                                        <Storyboard>
+                                            <DoubleAnimation Storyboard.TargetName="RowTranslate"
+                                                             Storyboard.TargetProperty="Y"
+                                                             To="0"
+                                                             Duration="0:0:0.18">
+                                                <DoubleAnimation.EasingFunction>
+                                                    <CubicEase EasingMode="EaseOut" />
+                                                </DoubleAnimation.EasingFunction>
+                                            </DoubleAnimation>
+                                            <DoubleAnimation Storyboard.TargetName="RowTranslate"
+                                                             Storyboard.TargetProperty="X"
+                                                             To="0"
+                                                             Duration="0:0:0.18">
+                                                <DoubleAnimation.EasingFunction>
+                                                    <CubicEase EasingMode="EaseOut" />
+                                                </DoubleAnimation.EasingFunction>
+                                            </DoubleAnimation>
+                                            <DoubleAnimation Storyboard.TargetName="RowScale"
+                                                             Storyboard.TargetProperty="ScaleX"
+                                                             To="1"
+                                                             Duration="0:0:0.18">
+                                                <DoubleAnimation.EasingFunction>
+                                                    <CubicEase EasingMode="EaseOut" />
+                                                </DoubleAnimation.EasingFunction>
+                                            </DoubleAnimation>
+                                            <DoubleAnimation Storyboard.TargetName="RowScale"
+                                                             Storyboard.TargetProperty="ScaleY"
+                                                             To="1"
+                                                             Duration="0:0:0.18">
+                                                <DoubleAnimation.EasingFunction>
+                                                    <CubicEase EasingMode="EaseOut" />
+                                                </DoubleAnimation.EasingFunction>
+                                            </DoubleAnimation>
+                                        </Storyboard>
+                                    </BeginStoryboard>
+                                </Trigger.ExitActions>
                             </Trigger>
                             <Trigger Property="IsPressed" Value="True">
-                                <Setter TargetName="RowBorder" Property="Background" Value="#14FFFFFF" />
+                                <Setter TargetName="RowBorder" Property="Background" Value="#282A30" />
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -415,13 +707,22 @@
                                     </Grid>
                                 </Border>
 
-                                <!-- 结果条目行 -->
+                                <!-- 结果条目行（带鼠标浮动高亮卡片与图标上浮微缩放动画） -->
                                 <Border x:Name="ItemRowBorder"
                                         CornerRadius="6"
                                         Padding="10,7"
                                         Background="Transparent"
+                                        BorderThickness="1"
+                                        BorderBrush="Transparent"
                                         Cursor="Hand"
+                                        RenderTransformOrigin="0.5,0.5"
                                         MouseLeftButtonUp="OnResultRowMouseLeftButtonUp">
+                                    <Border.RenderTransform>
+                                        <TransformGroup>
+                                            <ScaleTransform x:Name="ItemRowScale" ScaleX="1" ScaleY="1" />
+                                            <TranslateTransform x:Name="ItemRowTranslate" X="0" Y="0" />
+                                        </TransformGroup>
+                                    </Border.RenderTransform>
                                     <Border.Style>
                                         <Style TargetType="Border">
                                             <Setter Property="Visibility" Value="Visible" />
@@ -431,14 +732,85 @@
                                                 </DataTrigger>
                                                 <DataTrigger Binding="{Binding IsBestMatchCard}" Value="True">
                                                     <Setter Property="Background" Value="#2B2D31" />
+                                                    <Setter Property="BorderBrush" Value="#14FFFFFF" />
                                                     <Setter Property="Padding" Value="12,10" />
                                                     <Setter Property="Margin" Value="0,2,0,4" />
                                                 </DataTrigger>
                                                 <DataTrigger Binding="{Binding RelativeSource={RelativeSource AncestorType=ListBoxItem}, Path=IsMouseOver}" Value="True">
-                                                    <Setter Property="Background" Value="#2A2C32" />
+                                                    <Setter Property="Background" Value="#32353E" />
+                                                    <Setter Property="BorderBrush" Value="#24FFFFFF" />
+                                                    <DataTrigger.EnterActions>
+                                                        <BeginStoryboard>
+                                                            <Storyboard>
+                                                                <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(TransformGroup.Children)[1].(TranslateTransform.Y)"
+                                                                                 To="-1.5"
+                                                                                 Duration="0:0:0.15">
+                                                                    <DoubleAnimation.EasingFunction>
+                                                                        <CubicEase EasingMode="EaseOut" />
+                                                                    </DoubleAnimation.EasingFunction>
+                                                                </DoubleAnimation>
+                                                                <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(TransformGroup.Children)[1].(TranslateTransform.X)"
+                                                                                 To="2"
+                                                                                 Duration="0:0:0.15">
+                                                                    <DoubleAnimation.EasingFunction>
+                                                                        <CubicEase EasingMode="EaseOut" />
+                                                                    </DoubleAnimation.EasingFunction>
+                                                                </DoubleAnimation>
+                                                                <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(TransformGroup.Children)[0].(ScaleTransform.ScaleX)"
+                                                                                 To="1.012"
+                                                                                 Duration="0:0:0.15">
+                                                                    <DoubleAnimation.EasingFunction>
+                                                                        <CubicEase EasingMode="EaseOut" />
+                                                                    </DoubleAnimation.EasingFunction>
+                                                                </DoubleAnimation>
+                                                                <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(TransformGroup.Children)[0].(ScaleTransform.ScaleY)"
+                                                                                 To="1.012"
+                                                                                 Duration="0:0:0.15">
+                                                                    <DoubleAnimation.EasingFunction>
+                                                                        <CubicEase EasingMode="EaseOut" />
+                                                                    </DoubleAnimation.EasingFunction>
+                                                                </DoubleAnimation>
+                                                            </Storyboard>
+                                                        </BeginStoryboard>
+                                                    </DataTrigger.EnterActions>
+                                                    <DataTrigger.ExitActions>
+                                                        <BeginStoryboard>
+                                                            <Storyboard>
+                                                                <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(TransformGroup.Children)[1].(TranslateTransform.Y)"
+                                                                                 To="0"
+                                                                                 Duration="0:0:0.18">
+                                                                    <DoubleAnimation.EasingFunction>
+                                                                        <CubicEase EasingMode="EaseOut" />
+                                                                    </DoubleAnimation.EasingFunction>
+                                                                </DoubleAnimation>
+                                                                <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(TransformGroup.Children)[1].(TranslateTransform.X)"
+                                                                                 To="0"
+                                                                                 Duration="0:0:0.18">
+                                                                    <DoubleAnimation.EasingFunction>
+                                                                        <CubicEase EasingMode="EaseOut" />
+                                                                    </DoubleAnimation.EasingFunction>
+                                                                </DoubleAnimation>
+                                                                <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(TransformGroup.Children)[0].(ScaleTransform.ScaleX)"
+                                                                                 To="1"
+                                                                                 Duration="0:0:0.18">
+                                                                    <DoubleAnimation.EasingFunction>
+                                                                        <CubicEase EasingMode="EaseOut" />
+                                                                    </DoubleAnimation.EasingFunction>
+                                                                </DoubleAnimation>
+                                                                <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(TransformGroup.Children)[0].(ScaleTransform.ScaleY)"
+                                                                                 To="1"
+                                                                                 Duration="0:0:0.18">
+                                                                    <DoubleAnimation.EasingFunction>
+                                                                        <CubicEase EasingMode="EaseOut" />
+                                                                    </DoubleAnimation.EasingFunction>
+                                                                </DoubleAnimation>
+                                                            </Storyboard>
+                                                        </BeginStoryboard>
+                                                    </DataTrigger.ExitActions>
                                                 </DataTrigger>
                                                 <DataTrigger Binding="{Binding RelativeSource={RelativeSource AncestorType=ListBoxItem}, Path=IsSelected}" Value="True">
-                                                    <Setter Property="Background" Value="#34373E" />
+                                                    <Setter Property="Background" Value="#363942" />
+                                                    <Setter Property="BorderBrush" Value="#28FFFFFF" />
                                                 </DataTrigger>
                                             </Style.Triggers>
                                         </Style>
@@ -471,13 +843,84 @@
                                         </Border>
 
                                         <!-- 条目图标 -->
-                                        <Image Grid.Column="0"
+                                        <Image x:Name="ItemIconImage"
+                                               Grid.Column="0"
                                                Source="{Binding Item.SmallIcon}"
                                                Width="22"
                                                Height="22"
                                                Margin="2,0,11,0"
                                                VerticalAlignment="Center"
-                                               RenderOptions.BitmapScalingMode="HighQuality" />
+                                               RenderTransformOrigin="0.5,0.5"
+                                               RenderOptions.BitmapScalingMode="HighQuality">
+                                            <Image.RenderTransform>
+                                                <TransformGroup>
+                                                    <ScaleTransform ScaleX="1" ScaleY="1" />
+                                                    <TranslateTransform X="0" Y="0" />
+                                                </TransformGroup>
+                                            </Image.RenderTransform>
+                                            <Image.Style>
+                                                <Style TargetType="Image">
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding RelativeSource={RelativeSource AncestorType=ListBoxItem}, Path=IsMouseOver}" Value="True">
+                                                            <DataTrigger.EnterActions>
+                                                                <BeginStoryboard>
+                                                                    <Storyboard>
+                                                                        <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(TransformGroup.Children)[0].(ScaleTransform.ScaleX)"
+                                                                                         To="1.10"
+                                                                                         Duration="0:0:0.15">
+                                                                            <DoubleAnimation.EasingFunction>
+                                                                                <CubicEase EasingMode="EaseOut" />
+                                                                            </DoubleAnimation.EasingFunction>
+                                                                        </DoubleAnimation>
+                                                                        <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(TransformGroup.Children)[0].(ScaleTransform.ScaleY)"
+                                                                                         To="1.10"
+                                                                                         Duration="0:0:0.15">
+                                                                            <DoubleAnimation.EasingFunction>
+                                                                                <CubicEase EasingMode="EaseOut" />
+                                                                            </DoubleAnimation.EasingFunction>
+                                                                        </DoubleAnimation>
+                                                                        <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(TransformGroup.Children)[1].(TranslateTransform.Y)"
+                                                                                         To="-1.2"
+                                                                                         Duration="0:0:0.15">
+                                                                            <DoubleAnimation.EasingFunction>
+                                                                                <CubicEase EasingMode="EaseOut" />
+                                                                            </DoubleAnimation.EasingFunction>
+                                                                        </DoubleAnimation>
+                                                                    </Storyboard>
+                                                                </BeginStoryboard>
+                                                            </DataTrigger.EnterActions>
+                                                            <DataTrigger.ExitActions>
+                                                                <BeginStoryboard>
+                                                                    <Storyboard>
+                                                                        <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(TransformGroup.Children)[0].(ScaleTransform.ScaleX)"
+                                                                                         To="1"
+                                                                                         Duration="0:0:0.18">
+                                                                            <DoubleAnimation.EasingFunction>
+                                                                                <CubicEase EasingMode="EaseOut" />
+                                                                            </DoubleAnimation.EasingFunction>
+                                                                        </DoubleAnimation>
+                                                                        <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(TransformGroup.Children)[0].(ScaleTransform.ScaleY)"
+                                                                                         To="1"
+                                                                                         Duration="0:0:0.18">
+                                                                            <DoubleAnimation.EasingFunction>
+                                                                                <CubicEase EasingMode="EaseOut" />
+                                                                            </DoubleAnimation.EasingFunction>
+                                                                        </DoubleAnimation>
+                                                                        <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(TransformGroup.Children)[1].(TranslateTransform.Y)"
+                                                                                         To="0"
+                                                                                         Duration="0:0:0.18">
+                                                                            <DoubleAnimation.EasingFunction>
+                                                                                <CubicEase EasingMode="EaseOut" />
+                                                                            </DoubleAnimation.EasingFunction>
+                                                                        </DoubleAnimation>
+                                                                    </Storyboard>
+                                                                </BeginStoryboard>
+                                                            </DataTrigger.ExitActions>
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </Image.Style>
+                                        </Image>
 
                                         <!-- 条目文字 -->
                                         <StackPanel Grid.Column="1" VerticalAlignment="Center">
@@ -545,7 +988,7 @@
                         Background="#28292D"
                         BorderBrush="#1AFFFFFF"
                         BorderThickness="1"
-                        Padding="22,22,22,16">
+                        Padding="22,16,22,16">
                     <Grid x:Name="PreviewContentGrid">
                         <Grid.RowDefinitions>
                             <RowDefinition Height="Auto" />
@@ -553,33 +996,188 @@
                             <RowDefinition Height="*" />
                         </Grid.RowDefinitions>
 
-                        <!-- 顶部居中大图标与文件名称 -->
-                        <StackPanel Grid.Row="0" HorizontalAlignment="Center" Margin="0,4,0,16">
-                            <Image x:Name="PreviewIconImage"
-                                   Width="64"
-                                   Height="64"
-                                   HorizontalAlignment="Center"
-                                   Margin="0,0,0,14"
-                                   RenderOptions.BitmapScalingMode="HighQuality" />
+                        <!-- 顶部居中大图标与文件名称（还原如图所示的圆角浮动高亮磁贴与上浮动画） -->
+                        <Border x:Name="PreviewHeroCardBorder"
+                                Grid.Row="0"
+                                HorizontalAlignment="Center"
+                                CornerRadius="8"
+                                Padding="26,14,26,14"
+                                Margin="0,0,0,12"
+                                Background="Transparent"
+                                BorderBrush="Transparent"
+                                BorderThickness="1"
+                                Cursor="Hand"
+                                ToolTip="点击直接打开选中项 (Enter)"
+                                RenderTransformOrigin="0.5,0.5"
+                                MouseLeftButtonUp="OnActionOpenClick">
+                            <Border.RenderTransform>
+                                <TransformGroup>
+                                    <ScaleTransform ScaleX="1" ScaleY="1" />
+                                    <TranslateTransform X="0" Y="0" />
+                                </TransformGroup>
+                            </Border.RenderTransform>
+                            <Border.Style>
+                                <Style TargetType="Border">
+                                    <Style.Triggers>
+                                        <Trigger Property="IsMouseOver" Value="True">
+                                            <Setter Property="Background" Value="#34363D" />
+                                            <Setter Property="BorderBrush" Value="#26FFFFFF" />
+                                            <Trigger.EnterActions>
+                                                <BeginStoryboard>
+                                                    <Storyboard>
+                                                        <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(TransformGroup.Children)[1].(TranslateTransform.Y)"
+                                                                         To="-2.5"
+                                                                         Duration="0:0:0.16">
+                                                            <DoubleAnimation.EasingFunction>
+                                                                <CubicEase EasingMode="EaseOut" />
+                                                            </DoubleAnimation.EasingFunction>
+                                                        </DoubleAnimation>
+                                                        <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(TransformGroup.Children)[0].(ScaleTransform.ScaleX)"
+                                                                         To="1.02"
+                                                                         Duration="0:0:0.16">
+                                                            <DoubleAnimation.EasingFunction>
+                                                                <CubicEase EasingMode="EaseOut" />
+                                                            </DoubleAnimation.EasingFunction>
+                                                        </DoubleAnimation>
+                                                        <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(TransformGroup.Children)[0].(ScaleTransform.ScaleY)"
+                                                                         To="1.02"
+                                                                         Duration="0:0:0.16">
+                                                            <DoubleAnimation.EasingFunction>
+                                                                <CubicEase EasingMode="EaseOut" />
+                                                            </DoubleAnimation.EasingFunction>
+                                                        </DoubleAnimation>
+                                                    </Storyboard>
+                                                </BeginStoryboard>
+                                            </Trigger.EnterActions>
+                                            <Trigger.ExitActions>
+                                                <BeginStoryboard>
+                                                    <Storyboard>
+                                                        <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(TransformGroup.Children)[1].(TranslateTransform.Y)"
+                                                                         To="0"
+                                                                         Duration="0:0:0.18">
+                                                            <DoubleAnimation.EasingFunction>
+                                                                <CubicEase EasingMode="EaseOut" />
+                                                            </DoubleAnimation.EasingFunction>
+                                                        </DoubleAnimation>
+                                                        <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(TransformGroup.Children)[0].(ScaleTransform.ScaleX)"
+                                                                         To="1"
+                                                                         Duration="0:0:0.18">
+                                                            <DoubleAnimation.EasingFunction>
+                                                                <CubicEase EasingMode="EaseOut" />
+                                                            </DoubleAnimation.EasingFunction>
+                                                        </DoubleAnimation>
+                                                        <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(TransformGroup.Children)[0].(ScaleTransform.ScaleY)"
+                                                                         To="1"
+                                                                         Duration="0:0:0.18">
+                                                            <DoubleAnimation.EasingFunction>
+                                                                <CubicEase EasingMode="EaseOut" />
+                                                            </DoubleAnimation.EasingFunction>
+                                                        </DoubleAnimation>
+                                                    </Storyboard>
+                                                </BeginStoryboard>
+                                            </Trigger.ExitActions>
+                                        </Trigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </Border.Style>
 
-                            <TextBlock x:Name="PreviewTitleText"
-                                       Text="选择条目查看详情"
-                                       Foreground="#F5F6F8"
-                                       FontSize="16"
-                                       FontWeight="SemiBold"
-                                       TextAlignment="Center"
-                                       TextWrapping="Wrap"
-                                       MaxWidth="330" />
+                            <StackPanel HorizontalAlignment="Center">
+                                <Image x:Name="PreviewIconImage"
+                                       Width="64"
+                                       Height="64"
+                                       HorizontalAlignment="Center"
+                                       Margin="0,0,0,12"
+                                       RenderTransformOrigin="0.5,0.5"
+                                       RenderOptions.BitmapScalingMode="HighQuality">
+                                    <Image.RenderTransform>
+                                        <TransformGroup>
+                                            <ScaleTransform ScaleX="1" ScaleY="1" />
+                                            <TranslateTransform X="0" Y="0" />
+                                        </TransformGroup>
+                                    </Image.RenderTransform>
+                                    <Image.Style>
+                                        <Style TargetType="Image">
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding ElementName=PreviewHeroCardBorder, Path=IsMouseOver}" Value="True">
+                                                    <DataTrigger.EnterActions>
+                                                        <BeginStoryboard>
+                                                            <Storyboard>
+                                                                <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(TransformGroup.Children)[0].(ScaleTransform.ScaleX)"
+                                                                                 To="1.08"
+                                                                                 Duration="0:0:0.16">
+                                                                    <DoubleAnimation.EasingFunction>
+                                                                        <CubicEase EasingMode="EaseOut" />
+                                                                    </DoubleAnimation.EasingFunction>
+                                                                </DoubleAnimation>
+                                                                <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(TransformGroup.Children)[0].(ScaleTransform.ScaleY)"
+                                                                                 To="1.08"
+                                                                                 Duration="0:0:0.16">
+                                                                    <DoubleAnimation.EasingFunction>
+                                                                        <CubicEase EasingMode="EaseOut" />
+                                                                    </DoubleAnimation.EasingFunction>
+                                                                </DoubleAnimation>
+                                                                <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(TransformGroup.Children)[1].(TranslateTransform.Y)"
+                                                                                 To="-2.0"
+                                                                                 Duration="0:0:0.16">
+                                                                    <DoubleAnimation.EasingFunction>
+                                                                        <CubicEase EasingMode="EaseOut" />
+                                                                    </DoubleAnimation.EasingFunction>
+                                                                </DoubleAnimation>
+                                                            </Storyboard>
+                                                        </BeginStoryboard>
+                                                    </DataTrigger.EnterActions>
+                                                    <DataTrigger.ExitActions>
+                                                        <BeginStoryboard>
+                                                            <Storyboard>
+                                                                <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(TransformGroup.Children)[0].(ScaleTransform.ScaleX)"
+                                                                                 To="1"
+                                                                                 Duration="0:0:0.18">
+                                                                    <DoubleAnimation.EasingFunction>
+                                                                        <CubicEase EasingMode="EaseOut" />
+                                                                    </DoubleAnimation.EasingFunction>
+                                                                </DoubleAnimation>
+                                                                <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(TransformGroup.Children)[0].(ScaleTransform.ScaleY)"
+                                                                                 To="1"
+                                                                                 Duration="0:0:0.18">
+                                                                    <DoubleAnimation.EasingFunction>
+                                                                        <CubicEase EasingMode="EaseOut" />
+                                                                    </DoubleAnimation.EasingFunction>
+                                                                </DoubleAnimation>
+                                                                <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(TransformGroup.Children)[1].(TranslateTransform.Y)"
+                                                                                 To="0"
+                                                                                 Duration="0:0:0.18">
+                                                                    <DoubleAnimation.EasingFunction>
+                                                                        <CubicEase EasingMode="EaseOut" />
+                                                                    </DoubleAnimation.EasingFunction>
+                                                                </DoubleAnimation>
+                                                            </Storyboard>
+                                                        </BeginStoryboard>
+                                                    </DataTrigger.ExitActions>
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </Image.Style>
+                                </Image>
 
-                            <TextBlock x:Name="PreviewSubtitleText"
-                                       Text=""
-                                       Foreground="#A0A6B2"
-                                       FontSize="12"
-                                       TextAlignment="Center"
-                                       TextTrimming="CharacterEllipsis"
-                                       MaxWidth="330"
-                                       Margin="0,5,0,0" />
-                        </StackPanel>
+                                <TextBlock x:Name="PreviewTitleText"
+                                           Text="选择条目查看详情"
+                                           Foreground="#F5F6F8"
+                                           FontSize="16"
+                                           FontWeight="SemiBold"
+                                           TextAlignment="Center"
+                                           TextWrapping="Wrap"
+                                           MaxWidth="310" />
+
+                                <TextBlock x:Name="PreviewSubtitleText"
+                                           Text=""
+                                           Foreground="#A0A6B2"
+                                           FontSize="12"
+                                           TextAlignment="Center"
+                                           TextTrimming="CharacterEllipsis"
+                                           MaxWidth="310"
+                                           Margin="0,5,0,0" />
+                            </StackPanel>
+                        </Border>
 
                         <!-- 中部文件位置、修改时间、状态属性区 -->
                         <StackPanel Grid.Row="1">

@@ -296,7 +296,7 @@ public partial class App : System.Windows.Application
         stdout.WriteLine($"[SelfTest] FolderQuery('Windows') Count={folderQuery.TotalCount}, Returned={folderQuery.Items.Count}");
         stdout.WriteLine($"[SelfTest] Everything Query Elapsed: {querySw.Elapsed.TotalMilliseconds:F2} ms");
         stdout.WriteLine($"[SelfTest] Apps('电脑') Returned={apps.Count}, Settings('任务栏') Returned={sysSettings.Count}");
-        stdout.WriteLine($"[SelfTest] ShowInTaskbar={window.ShowInTaskbar}");
+        stdout.WriteLine($"[SelfTest] ShowInTaskbar={window.ShowInTaskbar}, ToolWindowStyle={window.HasToolWindowExtendedStyle()}");
         stdout.WriteLine($"[SelfTest] WindowBounds=({window.Left:F1}, {window.Top:F1}, {window.Width:F1}x{window.Height:F1}), ScreenHeight={SystemParameters.PrimaryScreenHeight:F1}, Source={boundsService.LastPlacementSource}");
         stdout.WriteLine($"[SelfTest] Adaptive1080p Card=({placement1080p.CardWidthDip:F0}x{placement1080p.CardHeightDip:F0}), Window=({placement1080p.WindowWidthDip:F0}x{placement1080p.WindowHeightDip:F0}), Scale={placement1080p.UiScaleFactor:F2}");
         stdout.WriteLine($"[SelfTest] Adaptive1440p Card=({placement1440p.CardWidthDip:F0}x{placement1440p.CardHeightDip:F0}), Window=({placement1440p.WindowWidthDip:F0}x{placement1440p.WindowHeightDip:F0}), Scale={placement1440p.UiScaleFactor:F2}");
