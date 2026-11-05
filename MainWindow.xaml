@@ -1,0 +1,692 @@
+<Window x:Class="EverythingonStart.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:models="clr-namespace:EverythingonStart.Models"
+        Title="EverythingonStart"
+        Width="780"
+        Height="680"
+        WindowStyle="None"
+        AllowsTransparency="True"
+        Background="Transparent"
+        ShowInTaskbar="False"
+        Topmost="True"
+        ResizeMode="NoResize"
+        FontFamily="Segoe UI Variable Display, Inter, Microsoft YaHei UI, Segoe UI"
+        TextOptions.TextFormattingMode="Ideal"
+        TextOptions.TextRenderingMode="ClearType"
+        PreviewKeyDown="OnWindowPreviewKeyDown"
+        Deactivated="OnWindowDeactivated">
+
+    <Window.Resources>
+        <BooleanToVisibilityConverter x:Key="BoolToVis" />
+
+        <!-- 现代深色滚动条样式 -->
+        <Style TargetType="ScrollBar">
+            <Setter Property="Width" Value="6" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ScrollBar">
+                        <Grid Background="Transparent" Width="6">
+                            <Track Name="PART_Track" IsDirectionReversed="true">
+                                <Track.Thumb>
+                                    <Thumb>
+                                        <Thumb.Template>
+                                            <ControlTemplate TargetType="Thumb">
+                                                <Border CornerRadius="3" Background="#44FFFFFF" Margin="1,0" />
+                                            </ControlTemplate>
+                                        </Thumb.Template>
+                                    </Thumb>
+                                </Track.Thumb>
+                            </Track>
+                        </Grid>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- 顶部胶囊标签 RadioButton 样式 -->
+        <Style x:Key="CategoryPillStyle" TargetType="RadioButton">
+            <Setter Property="Foreground" Value="#E4E6EB" />
+            <Setter Property="Background" Value="#2D2F34" />
+            <Setter Property="Padding" Value="13,5" />
+            <Setter Property="Margin" Value="0,0,7,0" />
+            <Setter Property="FontSize" Value="12.5" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="RadioButton">
+                        <Border x:Name="PillBorder"
+                                Background="{TemplateBinding Background}"
+                                CornerRadius="14"
+                                Padding="{TemplateBinding Padding}"
+                                BorderThickness="1"
+                                BorderBrush="#14FFFFFF">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="PillBorder" Property="Background" Value="#3A3D44" />
+                            </Trigger>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="PillBorder" Property="Background" Value="#B4C3D0" />
+                                <Setter TargetName="PillBorder" Property="BorderBrush" Value="#D0DCE5" />
+                                <Setter Property="Foreground" Value="#141619" />
+                                <Setter Property="FontWeight" Value="SemiBold" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- 图标按钮样式 -->
+        <Style x:Key="IconButtonStyle" TargetType="Button">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="Foreground" Value="#D4D7DD" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Width" Value="30" />
+            <Setter Property="Height" Value="30" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="BtnBorder"
+                                Background="{TemplateBinding Background}"
+                                CornerRadius="6">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="BtnBorder" Property="Background" Value="#26FFFFFF" />
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="BtnBorder" Property="Background" Value="#18FFFFFF" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- 右侧详情面板快捷操作按钮样式 -->
+        <Style x:Key="ActionRowButtonStyle" TargetType="Button">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="Foreground" Value="#ECEEF2" />
+            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+            <Setter Property="Padding" Value="12,9" />
+            <Setter Property="Margin" Value="0,1" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="RowBorder"
+                                Background="{TemplateBinding Background}"
+                                CornerRadius="6"
+                                Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                              VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="RowBorder" Property="Background" Value="#22FFFFFF" />
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="RowBorder" Property="Background" Value="#14FFFFFF" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </Window.Resources>
+
+    <!-- 外层玻璃主容器 -->
+    <Border Margin="10"
+            CornerRadius="12"
+            Background="#F21F2023"
+            BorderBrush="#2EFFFFFF"
+            BorderThickness="1">
+        <Border.Effect>
+            <DropShadowEffect BlurRadius="24" ShadowDepth="6" Opacity="0.55" Color="#000000" />
+        </Border.Effect>
+
+        <Grid Margin="18,16,18,14">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
+
+            <!-- 第一行：顶部圆角搜索框 -->
+            <Border x:Name="SearchInputBorder"
+                    Grid.Row="0"
+                    Height="38"
+                    CornerRadius="19"
+                    Background="#18191B"
+                    BorderBrush="#33FFFFFF"
+                    BorderThickness="1"
+                    Padding="14,0,10,0">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+
+                    <!-- 放大镜图标 -->
+                    <Path Grid.Column="0"
+                          Width="15"
+                          Height="15"
+                          Stretch="Uniform"
+                          Stroke="#58B6EA"
+                          StrokeThickness="1.8"
+                          VerticalAlignment="Center"
+                          Margin="0,0,10,0"
+                          Data="M 6.5,1 A 5.5,5.5 0 1 1 6.49,1 M 10.5,10.5 L 14.5,14.5" />
+
+                    <!-- 输入框 -->
+                    <TextBox x:Name="SearchTextBox"
+                             Grid.Column="1"
+                             Background="Transparent"
+                             BorderThickness="0"
+                             Foreground="#F5F6F8"
+                             CaretBrush="#58B6EA"
+                             FontSize="14"
+                             VerticalContentAlignment="Center"
+                             TextChanged="OnSearchTextChanged" />
+
+                    <!-- 占位提示文字 -->
+                    <TextBlock x:Name="PlaceholderText"
+                               Grid.Column="1"
+                               Text="在此处输入以搜索文件 (Everything)、应用、设置与 Web..."
+                               Foreground="#7A7E87"
+                               FontSize="13.5"
+                               VerticalAlignment="Center"
+                               IsHitTestVisible="False" />
+
+                    <!-- 清除按钮 -->
+                    <Button x:Name="ClearSearchButton"
+                            Grid.Column="2"
+                            Style="{StaticResource IconButtonStyle}"
+                            Width="24"
+                            Height="24"
+                            Visibility="Collapsed"
+                            Click="OnClearSearchClick"
+                            ToolTip="清空搜索内容 (Esc)">
+                        <Path Width="10"
+                              Height="10"
+                              Stretch="Uniform"
+                              Stroke="#A6ABB4"
+                              StrokeThickness="1.6"
+                              Data="M 1,1 L 9,9 M 9,1 L 1,9" />
+                    </Button>
+                </Grid>
+            </Border>
+
+            <!-- 第二行：分类胶囊栏与右侧设置按钮 -->
+            <Grid Grid.Row="1" Margin="0,12,0,10">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+
+                <!-- 返回全部按钮 -->
+                <Button Grid.Column="0"
+                        Style="{StaticResource IconButtonStyle}"
+                        Margin="0,0,8,0"
+                        Click="OnBackToAllCategoryClick"
+                        ToolTip="返回全部分类">
+                    <Path Width="13"
+                          Height="13"
+                          Stretch="Uniform"
+                          Stroke="#D6D9E0"
+                          StrokeThickness="1.6"
+                          Data="M 13,6.5 L 1,6.5 M 6,1.5 L 1,6.5 L 6,11.5" />
+                </Button>
+
+                <!-- 分类胶囊列表 -->
+                <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                    <RadioButton x:Name="TabAll" Content="全部" IsChecked="True" Style="{StaticResource CategoryPillStyle}" Tag="{x:Static models:SearchCategory.All}" Checked="OnCategoryTabChecked" />
+                    <RadioButton x:Name="TabApps" Content="应用" Style="{StaticResource CategoryPillStyle}" Tag="{x:Static models:SearchCategory.Apps}" Checked="OnCategoryTabChecked" />
+                    <RadioButton x:Name="TabDocs" Content="文档" Style="{StaticResource CategoryPillStyle}" Tag="{x:Static models:SearchCategory.Documents}" Checked="OnCategoryTabChecked" />
+                    <RadioButton x:Name="TabWeb" Content="Web" Style="{StaticResource CategoryPillStyle}" Tag="{x:Static models:SearchCategory.Web}" Checked="OnCategoryTabChecked" />
+                    <RadioButton x:Name="TabSettings" Content="设置" Style="{StaticResource CategoryPillStyle}" Tag="{x:Static models:SearchCategory.Settings}" Checked="OnCategoryTabChecked" />
+                    <RadioButton x:Name="TabFolders" Content="文件夹" Style="{StaticResource CategoryPillStyle}" Tag="{x:Static models:SearchCategory.Folders}" Checked="OnCategoryTabChecked" />
+                    <RadioButton x:Name="TabPhotos" Content="照片" Style="{StaticResource CategoryPillStyle}" Tag="{x:Static models:SearchCategory.Photos}" Checked="OnCategoryTabChecked" />
+                </StackPanel>
+
+                <!-- 右侧状态与选项菜单 -->
+                <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+                    <Border Background="#18FFFFFF"
+                            CornerRadius="10"
+                            Padding="8,3"
+                            Margin="0,0,6,0"
+                            VerticalAlignment="Center"
+                            ToolTip="当前 Everything 搜索引擎状态">
+                        <TextBlock x:Name="EngineStatusBadge"
+                                   Text="Everything 实时"
+                                   FontSize="11"
+                                   Foreground="#98A2B3" />
+                    </Border>
+
+                    <Button x:Name="OptionsMenuButton"
+                            Style="{StaticResource IconButtonStyle}"
+                            Click="OnOptionsMenuButtonClick"
+                            ToolTip="Win 键呼出模式与搜索选项">
+                        <Path Width="15"
+                              Height="4"
+                              Stretch="Uniform"
+                              Fill="#D6D9E0"
+                              Data="M 2,2 A 1.5,1.5 0 1 1 1.99,2 M 8,2 A 1.5,1.5 0 1 1 7.99,2 M 14,2 A 1.5,1.5 0 1 1 13.99,2" />
+                    </Button>
+                </StackPanel>
+            </Grid>
+
+            <!-- 第三行：左右双栏主面板 -->
+            <Grid Grid.Row="2">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="335" />
+                    <ColumnDefinition Width="14" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+
+                <!-- 左栏：分组与搜索结果虚拟化列表 -->
+                <ListBox x:Name="ResultsListBox"
+                         Grid.Column="0"
+                         Background="Transparent"
+                         BorderThickness="0"
+                         HorizontalContentAlignment="Stretch"
+                         ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                         ScrollViewer.VerticalScrollBarVisibility="Auto"
+                         ScrollViewer.CanContentScroll="True"
+                         VirtualizingPanel.IsVirtualizing="True"
+                         VirtualizingPanel.VirtualizationMode="Recycling"
+                         VirtualizingPanel.ScrollUnit="Pixel"
+                         SelectionChanged="OnResultsSelectionChanged"
+                         MouseDoubleClick="OnResultsMouseDoubleClick">
+
+                    <ListBox.ItemContainerStyle>
+                        <Style TargetType="ListBoxItem">
+                            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                            <Setter Property="Padding" Value="0" />
+                            <Setter Property="Margin" Value="0,1" />
+                            <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+                            <Setter Property="Template">
+                                <Setter.Value>
+                                    <ControlTemplate TargetType="ListBoxItem">
+                                        <ContentPresenter />
+                                    </ControlTemplate>
+                                </Setter.Value>
+                            </Setter>
+                        </Style>
+                    </ListBox.ItemContainerStyle>
+
+                    <ListBox.ItemTemplate>
+                        <DataTemplate DataType="{x:Type models:SearchListEntry}">
+                            <Grid>
+                                <!-- 分组标题行 -->
+                                <Border Visibility="{Binding IsHeader, Converter={StaticResource BoolToVis}}"
+                                        Padding="4,10,6,5"
+                                        Cursor="Hand"
+                                        Background="Transparent"
+                                        MouseLeftButtonUp="OnSectionHeaderMouseLeftButtonUp">
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Grid.Column="0"
+                                                   Text="{Binding HeaderTitle}"
+                                                   FontSize="13"
+                                                   FontWeight="SemiBold"
+                                                   Foreground="#F3F4F6" />
+                                        <TextBlock Grid.Column="1"
+                                                   Text="{Binding HeaderCountBadge}"
+                                                   FontSize="11.5"
+                                                   Foreground="#8C919C"
+                                                   VerticalAlignment="Bottom"
+                                                   Margin="8,0,0,1" />
+                                        <Path Grid.Column="3"
+                                              Visibility="{Binding CanExpandCategory, Converter={StaticResource BoolToVis}}"
+                                              Width="6"
+                                              Height="10"
+                                              Stretch="Uniform"
+                                              Stroke="#9BA1AE"
+                                              StrokeThickness="1.5"
+                                              VerticalAlignment="Center"
+                                              Data="M 1,1 L 5,5 L 1,9" />
+                                    </Grid>
+                                </Border>
+
+                                <!-- 结果条目行 -->
+                                <Border x:Name="ItemRowBorder"
+                                        Visibility="{Binding IsHeader, Converter={StaticResource BoolToVis}, ConverterParameter=Invert}"
+                                        CornerRadius="6"
+                                        Padding="10,7"
+                                        Background="Transparent"
+                                        Cursor="Hand"
+                                        MouseLeftButtonUp="OnResultRowMouseLeftButtonUp">
+                                    <Border.Style>
+                                        <Style TargetType="Border">
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding IsHeader}" Value="True">
+                                                    <Setter Property="Visibility" Value="Collapsed" />
+                                                </DataTrigger>
+                                                <DataTrigger Binding="{Binding IsBestMatchCard}" Value="True">
+                                                    <Setter Property="Background" Value="#2B2D31" />
+                                                    <Setter Property="Padding" Value="12,10" />
+                                                    <Setter Property="Margin" Value="0,2,0,4" />
+                                                </DataTrigger>
+                                                <DataTrigger Binding="{Binding RelativeSource={RelativeSource AncestorType=ListBoxItem}, Path=IsMouseOver}" Value="True">
+                                                    <Setter Property="Background" Value="#2A2C32" />
+                                                </DataTrigger>
+                                                <DataTrigger Binding="{Binding RelativeSource={RelativeSource AncestorType=ListBoxItem}, Path=IsSelected}" Value="True">
+                                                    <Setter Property="Background" Value="#34373E" />
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </Border.Style>
+
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="1.5*" />
+                                        </Grid.ColumnDefinitions>
+
+                                        <!-- 左侧选中指示竖条 -->
+                                        <Border Width="3"
+                                                Height="16"
+                                                CornerRadius="1.5"
+                                                Background="#58B6EA"
+                                                HorizontalAlignment="Left"
+                                                VerticalAlignment="Center"
+                                                Margin="-10,0,0,0">
+                                            <Border.Style>
+                                                <Style TargetType="Border">
+                                                    <Setter Property="Visibility" Value="Collapsed" />
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding RelativeSource={RelativeSource AncestorType=ListBoxItem}, Path=IsSelected}" Value="True">
+                                                            <Setter Property="Visibility" Value="Visible" />
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </Border.Style>
+                                        </Border>
+
+                                        <!-- 条目图标 -->
+                                        <Image Grid.Column="0"
+                                               Source="{Binding Item.SmallIcon}"
+                                               Width="22"
+                                               Height="22"
+                                               Margin="2,0,11,0"
+                                               VerticalAlignment="Center"
+                                               RenderOptions.BitmapScalingMode="HighQuality" />
+
+                                        <!-- 条目文字 -->
+                                        <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                            <TextBlock Text="{Binding Item.Title}"
+                                                       Foreground="#F2F4F7"
+                                                       FontSize="13"
+                                                       TextTrimming="CharacterEllipsis" />
+
+                                            <TextBlock Text="{Binding Item.Subtitle}"
+                                                       Foreground="#989EA9"
+                                                       FontSize="11.5"
+                                                       Margin="0,2,0,0"
+                                                       TextTrimming="CharacterEllipsis">
+                                                <TextBlock.Style>
+                                                    <Style TargetType="TextBlock">
+                                                        <Setter Property="Visibility" Value="Collapsed" />
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding IsBestMatchCard}" Value="True">
+                                                                <Setter Property="Visibility" Value="Visible" />
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </TextBlock.Style>
+                                            </TextBlock>
+
+                                            <TextBlock Text="{Binding Item.FormattedModifiedLine}"
+                                                       Foreground="#828894"
+                                                       FontSize="11"
+                                                       Margin="0,1,0,0"
+                                                       TextTrimming="CharacterEllipsis">
+                                                <TextBlock.Style>
+                                                    <Style TargetType="TextBlock">
+                                                        <Setter Property="Visibility" Value="Collapsed" />
+                                                        <Style.Triggers>
+                                                            <MultiDataTrigger>
+                                                                <MultiDataTrigger.Conditions>
+                                                                    <Condition Binding="{Binding IsBestMatchCard}" Value="True" />
+                                                                    <Condition Binding="{Binding Item.HasModifiedLine}" Value="True" />
+                                                                </MultiDataTrigger.Conditions>
+                                                                <Setter Property="Visibility" Value="Visible" />
+                                                            </MultiDataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </TextBlock.Style>
+                                            </TextBlock>
+                                        </StackPanel>
+                                    </Grid>
+                                </Border>
+                            </Grid>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+
+                <!-- 中间细分隔线 -->
+                <Border Grid.Column="1"
+                        Width="1"
+                        Background="#1FFFFFFF"
+                        HorizontalAlignment="Center"
+                        Margin="0,4" />
+
+                <!-- 右栏：选中项详情与快捷操作卡片（还原截图右侧面板） -->
+                <Border x:Name="PreviewCardBorder"
+                        Grid.Column="2"
+                        CornerRadius="8"
+                        Background="#28292D"
+                        BorderBrush="#1AFFFFFF"
+                        BorderThickness="1"
+                        Padding="22,22,22,16">
+                    <Grid x:Name="PreviewContentGrid">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="*" />
+                        </Grid.RowDefinitions>
+
+                        <!-- 顶部居中大图标与文件名称 -->
+                        <StackPanel Grid.Row="0" HorizontalAlignment="Center" Margin="0,4,0,16">
+                            <Image x:Name="PreviewIconImage"
+                                   Width="64"
+                                   Height="64"
+                                   HorizontalAlignment="Center"
+                                   Margin="0,0,0,14"
+                                   RenderOptions.BitmapScalingMode="HighQuality" />
+
+                            <TextBlock x:Name="PreviewTitleText"
+                                       Text="选择条目查看详情"
+                                       Foreground="#F5F6F8"
+                                       FontSize="16"
+                                       FontWeight="SemiBold"
+                                       TextAlignment="Center"
+                                       TextWrapping="Wrap"
+                                       MaxWidth="330" />
+
+                            <TextBlock x:Name="PreviewSubtitleText"
+                                       Text=""
+                                       Foreground="#A0A6B2"
+                                       FontSize="12"
+                                       TextAlignment="Center"
+                                       TextTrimming="CharacterEllipsis"
+                                       MaxWidth="330"
+                                       Margin="0,5,0,0" />
+                        </StackPanel>
+
+                        <!-- 中部文件位置、修改时间、状态属性区 -->
+                        <StackPanel Grid.Row="1">
+                            <Border Height="1" Background="#24FFFFFF" Margin="0,0,0,14" />
+
+                            <Grid Margin="2,0,2,10">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="96" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0"
+                                           Text="位置"
+                                           Foreground="#949AA6"
+                                           FontSize="12" />
+                                <TextBlock x:Name="PreviewLocationText"
+                                           Grid.Column="1"
+                                           Text="-"
+                                           Foreground="#D5D8DF"
+                                           FontSize="12"
+                                           TextWrapping="Wrap"
+                                           MaxHeight="54" />
+                            </Grid>
+
+                            <Grid Margin="2,0,2,10">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="96" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0"
+                                           Text="上次修改时间"
+                                           Foreground="#949AA6"
+                                           FontSize="12" />
+                                <TextBlock x:Name="PreviewModifiedText"
+                                           Grid.Column="1"
+                                           Text="-"
+                                           Foreground="#D5D8DF"
+                                           FontSize="12" />
+                            </Grid>
+
+                            <Grid Margin="2,0,2,14">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="96" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0"
+                                           Text="状态"
+                                           Foreground="#949AA6"
+                                           FontSize="12" />
+                                <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                                    <Ellipse Width="7"
+                                             Height="7"
+                                             Fill="#38BDF8"
+                                             VerticalAlignment="Center"
+                                             Margin="0,0,7,0" />
+                                    <TextBlock x:Name="PreviewStatusText"
+                                               Text="-"
+                                               Foreground="#D5D8DF"
+                                               FontSize="12" />
+                                </StackPanel>
+                            </Grid>
+
+                            <Border Height="1" Background="#24FFFFFF" Margin="0,0,0,10" />
+                        </StackPanel>
+
+                        <!-- 底部快捷操作列表（还原截图：打开、管理员取得所有权、打开文件位置、复制路径） -->
+                        <StackPanel Grid.Row="2" VerticalAlignment="Top">
+                            <Button x:Name="BtnActionOpen"
+                                    Style="{StaticResource ActionRowButtonStyle}"
+                                    Click="OnActionOpenClick">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="28" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <Path Grid.Column="0"
+                                          Width="14"
+                                          Height="14"
+                                          Stretch="Uniform"
+                                          Stroke="#D6D9E0"
+                                          StrokeThickness="1.4"
+                                          HorizontalAlignment="Left"
+                                          Data="M 8,1 L 13,1 L 13,6 M 13,1 L 6,8 M 11,8.5 L 11,12.5 L 1.5,12.5 L 1.5,3 L 5.5,3" />
+                                    <TextBlock Grid.Column="1" Text="打开" FontSize="12.5" VerticalAlignment="Center" />
+                                    <TextBlock Grid.Column="2" Text="Enter" FontSize="11" Foreground="#7A808C" VerticalAlignment="Center" />
+                                </Grid>
+                            </Button>
+
+                            <Button x:Name="BtnActionAdmin"
+                                    Style="{StaticResource ActionRowButtonStyle}"
+                                    Click="OnActionAdminClick">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="28" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <Path Grid.Column="0"
+                                          Width="14"
+                                          Height="14"
+                                          Stretch="Uniform"
+                                          Stroke="#D6D9E0"
+                                          StrokeThickness="1.4"
+                                          HorizontalAlignment="Left"
+                                          Data="M 7,1 L 13,3.5 L 13,7.5 C 13,10.8 10.4,13.4 7,14.5 C 3.6,13.4 1,10.8 1,7.5 L 1,3.5 Z" />
+                                    <TextBlock x:Name="AdminActionLabel" Grid.Column="1" Text="管理员取得所有权" FontSize="12.5" VerticalAlignment="Center" />
+                                    <TextBlock Grid.Column="2" Text="Ctrl+Shift+Enter" FontSize="11" Foreground="#7A808C" VerticalAlignment="Center" />
+                                </Grid>
+                            </Button>
+
+                            <Button x:Name="BtnActionOpenLocation"
+                                    Style="{StaticResource ActionRowButtonStyle}"
+                                    Click="OnActionOpenLocationClick">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="28" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <Path Grid.Column="0"
+                                          Width="14"
+                                          Height="14"
+                                          Stretch="Uniform"
+                                          Stroke="#D6D9E0"
+                                          StrokeThickness="1.4"
+                                          HorizontalAlignment="Left"
+                                          Data="M 1,3 L 5.5,3 L 7,5 L 13.5,5 L 13.5,12.5 L 1,12.5 Z" />
+                                    <TextBlock Grid.Column="1" Text="打开文件位置" FontSize="12.5" VerticalAlignment="Center" />
+                                    <TextBlock Grid.Column="2" Text="Ctrl+Enter" FontSize="11" Foreground="#7A808C" VerticalAlignment="Center" />
+                                </Grid>
+                            </Button>
+
+                            <Button x:Name="BtnActionCopyPath"
+                                    Style="{StaticResource ActionRowButtonStyle}"
+                                    Click="OnActionCopyPathClick">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="28" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <Path Grid.Column="0"
+                                          Width="14"
+                                          Height="14"
+                                          Stretch="Uniform"
+                                          Stroke="#D6D9E0"
+                                          StrokeThickness="1.4"
+                                          HorizontalAlignment="Left"
+                                          Data="M 4.5,4.5 L 12.5,4.5 L 12.5,13.5 L 4.5,13.5 Z M 2,10.5 L 2,1.5 L 10,1.5" />
+                                    <TextBlock x:Name="CopyPathActionLabel" Grid.Column="1" Text="复制路径" FontSize="12.5" VerticalAlignment="Center" />
+                                    <TextBlock Grid.Column="2" Text="Ctrl+Shift+C" FontSize="11" Foreground="#7A808C" VerticalAlignment="Center" />
+                                </Grid>
+                            </Button>
+                        </StackPanel>
+                    </Grid>
+                </Border>
+            </Grid>
+        </Grid>
+    </Border>
+</Window>
