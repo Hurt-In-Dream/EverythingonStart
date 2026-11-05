@@ -81,6 +81,40 @@
             </Setter>
         </Style>
 
+        <!-- 顶部胶囊动作按钮样式（与分类胶囊视觉一致） -->
+        <Style x:Key="CategoryActionPillButtonStyle" TargetType="Button">
+            <Setter Property="Foreground" Value="#E4E6EB" />
+            <Setter Property="Background" Value="#2D2F34" />
+            <Setter Property="Padding" Value="13,5" />
+            <Setter Property="Margin" Value="0,0,7,0" />
+            <Setter Property="FontSize" Value="12.5" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="PillBorder"
+                                Background="{TemplateBinding Background}"
+                                CornerRadius="14"
+                                Padding="{TemplateBinding Padding}"
+                                BorderThickness="1"
+                                BorderBrush="#14FFFFFF">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="PillBorder" Property="Background" Value="#3A3D44" />
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="PillBorder" Property="Background" Value="#B4C3D0" />
+                                <Setter Property="Foreground" Value="#141619" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
         <!-- 图标按钮样式 -->
         <Style x:Key="IconButtonStyle" TargetType="Button">
             <Setter Property="Background" Value="Transparent" />
@@ -266,6 +300,11 @@
                     <RadioButton x:Name="TabSettings" Content="设置" Style="{StaticResource CategoryPillStyle}" Tag="{x:Static models:SearchCategory.Settings}" Checked="OnCategoryTabChecked" />
                     <RadioButton x:Name="TabFolders" Content="文件夹" Style="{StaticResource CategoryPillStyle}" Tag="{x:Static models:SearchCategory.Folders}" Checked="OnCategoryTabChecked" />
                     <RadioButton x:Name="TabPhotos" Content="照片" Style="{StaticResource CategoryPillStyle}" Tag="{x:Static models:SearchCategory.Photos}" Checked="OnCategoryTabChecked" />
+                    <Button x:Name="BtnMoreEverything"
+                            Content="更多"
+                            Style="{StaticResource CategoryActionPillButtonStyle}"
+                            Click="OnOpenInEverythingClick"
+                            ToolTip="跳转到 Everything 主窗口 (Shift+Enter)" />
                 </StackPanel>
 
                 <!-- 右侧状态与选项菜单 -->

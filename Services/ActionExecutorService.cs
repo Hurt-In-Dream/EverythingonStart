@@ -2,16 +2,101 @@ using System.Diagnostics;
 using System.IO;
 using System.Windows;
 using EverythingonStart.Models;
+using Microsoft.Win32;
 
 namespace EverythingonStart.Services;
 
 public sealed class ActionExecutorService
 {
     private readonly EverythingSearchService _everythingService;
+    private string? _cachedEverythingExePath;
 
     public ActionExecutorService(EverythingSearchService everythingService)
     {
         _everythingService = everythingService;
+    }
+
+    public bool ExecuteOpenInEverything(string searchText)
+    {
+        var exePath = ResolveEverythingExecutablePath();
+        if (string.IsNullOrWhiteSpace(exePath))
+            return false;
+
+        var trimmed = searchText.Trim();
+        var psi = new ProcessStartInfo
+        {
+            FileName = exePath,
+            UseShellExecute = true
+        };
+
+        if (!string.IsNullOrEmpty(trimmed))
+        {
+            var escaped = trimmed.Replace("\"", "\"\"");
+            psi.Arguments = $"-s \"{escaped}\"";
+        }
+
+        Process.Start(psi);
+        return true;
+    }
+
+    public string? ResolveEverythingExecutablePath()
+    {
+        if (!string.IsNullOrWhiteSpace(_cachedEverythingExePath) && File.Exists(_cachedEverythingExePath))
+            return _cachedEverythingExePath;
+
+        string[] candidatePaths =
+        [
+            @"D:\Everything\Everything.exe",
+            @"D:\Everything\Everything64.exe",
+            @"C:\Program Files\Everything\Everything.exe",
+            @"C:\Program Files\Everything\Everything64.exe",
+            @"C:\Program Files\Everything 1.5a\Everything64.exe",
+            @"C:\Program Files\Everything 1.5a\Everything.exe",
+            @"C:\Program Files (x86)\Everything\Everything.exe"
+        ];
+
+        foreach (var path in candidatePaths)
+        {
+            if (File.Exists(path))
+            {
+                _cachedEverythingExePath = path;
+                return path;
+            }
+        }
+
+        string[] uninstallRoots =
+        [
+            @"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall",
+            @"SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall"
+        ];
+
+        foreach (var rootPath in uninstallRoots)
+        {
+            using var rootKey = Registry.LocalMachine.OpenSubKey(rootPath);
+            if (rootKey == null)
+                continue;
+
+            foreach (var subKeyName in rootKey.GetSubKeyNames())
+            {
+                using var subKey = rootKey.OpenSubKey(subKeyName);
+                var displayName = subKey?.GetValue("DisplayName") as string;
+                if (displayName == null || !displayName.Contains("Everything", StringComparison.OrdinalIgnoreCase))
+                    continue;
+
+                var installLocation = subKey?.GetValue("InstallLocation") as string;
+                if (!string.IsNullOrWhiteSpace(installLocation))
+                {
+                    var candidate = Path.Combine(installLocation, "Everything.exe");
+                    if (File.Exists(candidate))
+                    {
+                        _cachedEverythingExePath = candidate;
+                        return candidate;
+                    }
+                }
+            }
+        }
+
+        return null;
     }
 
     public bool ExecuteOpen(SearchResultItem? item)

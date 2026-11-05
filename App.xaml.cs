@@ -275,6 +275,7 @@ public partial class App : System.Windows.Application
 
         sw.Stop();
         stdout.WriteLine($"[SelfTest] Engine: {everything.ActiveEngineDescription}");
+        stdout.WriteLine($"[SelfTest] EverythingExePath: {actionExecutor.ResolveEverythingExecutablePath() ?? "Not Found"}");
         stdout.WriteLine($"[SelfTest] Everything Connected: {everything.IsConnected}");
         stdout.WriteLine($"[SelfTest] DocQuery('rar') Count={docQuery.TotalCount}, Returned={docQuery.Items.Count}");
         stdout.WriteLine($"[SelfTest] FolderQuery('Windows') Count={folderQuery.TotalCount}, Returned={folderQuery.Items.Count}");

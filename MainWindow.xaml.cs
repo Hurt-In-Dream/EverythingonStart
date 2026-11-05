@@ -403,6 +403,12 @@ public partial class MainWindow : Window
         SearchTextBox.Focus();
     }
 
+    private void OnOpenInEverythingClick(object sender, RoutedEventArgs e)
+    {
+        if (_actionExecutor.ExecuteOpenInEverything(SearchTextBox.Text))
+            HidePopup();
+    }
+
     private void OnCategoryTabChecked(object sender, RoutedEventArgs e)
     {
         if (sender is RadioButton { Tag: SearchCategory category } && IsLoaded)
@@ -944,6 +950,11 @@ public partial class MainWindow : Window
             if ((modifiers & ModifierKeys.Control) != 0 && (modifiers & ModifierKeys.Shift) != 0)
             {
                 if (_actionExecutor.ExecuteRunAsAdminOrTakeOwnership(_selectedItem))
+                    HidePopup();
+            }
+            else if ((modifiers & ModifierKeys.Shift) != 0)
+            {
+                if (_actionExecutor.ExecuteOpenInEverything(SearchTextBox.Text))
                     HidePopup();
             }
             else if ((modifiers & ModifierKeys.Control) != 0)
