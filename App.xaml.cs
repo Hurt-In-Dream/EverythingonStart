@@ -14,6 +14,10 @@ public partial class App : System.Windows.Application
     private const string ShutdownEventName = "EverythingonStart.ShutdownEvent";
 
     private Mutex? _instanceMutex;
+    private EventWaitHandle? _toggleWaitHandle;
+    private EventWaitHandle? _shutdownWaitHandle;
+    private RegisteredWaitHandle? _toggleRegisteredWait;
+    private RegisteredWaitHandle? _shutdownRegisteredWait;
     private AppSettingsService? _settingsService;
     private EverythingSearchService? _everythingService;
     private StartMenuIndexService? _startMenuService;
@@ -199,24 +203,20 @@ public partial class App : System.Windows.Application
 
     private void StartToggleSignalListener()
     {
-        Task.Factory.StartNew(
-            () =>
-            {
-                using var waitHandle = new EventWaitHandle(false, EventResetMode.AutoReset, ToggleEventName);
-                while (true)
-                {
-                    waitHandle.WaitOne();
-                    Dispatcher.BeginInvoke(() => _mainWindow?.ShowPopup(null));
-                }
-            },
-            TaskCreationOptions.LongRunning
+        _toggleWaitHandle = new EventWaitHandle(false, EventResetMode.AutoReset, ToggleEventName);
+        _toggleRegisteredWait = ThreadPool.RegisterWaitForSingleObject(
+            _toggleWaitHandle,
+            (_, _) => Dispatcher.BeginInvoke(() => _mainWindow?.ShowPopup(null)),
+            null,
+            -1,
+            executeOnlyOnce: false
         );
 
-        Task.Factory.StartNew(
-            () =>
+        _shutdownWaitHandle = new EventWaitHandle(false, EventResetMode.AutoReset, ShutdownEventName);
+        _shutdownRegisteredWait = ThreadPool.RegisterWaitForSingleObject(
+            _shutdownWaitHandle,
+            (_, _) =>
             {
-                using var shutdownHandle = new EventWaitHandle(false, EventResetMode.AutoReset, ShutdownEventName);
-                shutdownHandle.WaitOne();
                 if (_trayIcon != null)
                 {
                     _trayIcon.Visible = false;
@@ -227,7 +227,9 @@ public partial class App : System.Windows.Application
                 _everythingService?.Dispose();
                 Environment.Exit(0);
             },
-            TaskCreationOptions.LongRunning
+            null,
+            -1,
+            executeOnlyOnce: true
         );
     }
 
@@ -273,6 +275,12 @@ public partial class App : System.Windows.Application
         hook.Start();
         hook.Stop();
 
+        GC.Collect(1, GCCollectionMode.Optimized, blocking: true);
+        using var selfProc = Process.GetCurrentProcess();
+        double workingSetMb = selfProc.WorkingSet64 / (1024.0 * 1024.0);
+        double privateMb = selfProc.PrivateMemorySize64 / (1024.0 * 1024.0);
+        double managedMb = GC.GetTotalMemory(false) / (1024.0 * 1024.0);
+
         sw.Stop();
         stdout.WriteLine($"[SelfTest] Engine: {everything.ActiveEngineDescription}");
         stdout.WriteLine($"[SelfTest] EverythingExePath: {actionExecutor.ResolveEverythingExecutablePath() ?? "Not Found"}");
@@ -284,6 +292,7 @@ public partial class App : System.Windows.Application
         stdout.WriteLine($"[SelfTest] ShowInTaskbar={window.ShowInTaskbar}");
         stdout.WriteLine($"[SelfTest] WindowBounds=({window.Left:F1}, {window.Top:F1}, {window.Width:F1}x{window.Height:F1}), ScreenHeight={SystemParameters.PrimaryScreenHeight:F1}");
         stdout.WriteLine($"[SelfTest] FirstSelectableRowHeight={firstSelectableRowHeight:F1} px");
+        stdout.WriteLine($"[SelfTest] Memory WorkingSet={workingSetMb:F1} MB, Private={privateMb:F1} MB, ManagedHeap={managedMb:F1} MB, Handles={selfProc.HandleCount}, Threads={selfProc.Threads.Count}");
         stdout.WriteLine($"[SelfTest] Total SelfTest Elapsed: {sw.Elapsed.TotalMilliseconds:F2} ms");
 
         Shutdown(0);
@@ -297,6 +306,10 @@ public partial class App : System.Windows.Application
             _trayIcon.Dispose();
         }
 
+        _toggleRegisteredWait?.Unregister(null);
+        _shutdownRegisteredWait?.Unregister(null);
+        _toggleWaitHandle?.Dispose();
+        _shutdownWaitHandle?.Dispose();
         _winKeyHookService?.Dispose();
         _everythingService?.Dispose();
         _instanceMutex?.Dispose();

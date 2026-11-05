@@ -17,6 +17,8 @@ public sealed class IconCacheService
     private const uint SHGFI_USEFILEATTRIBUTES = 0x000000010;
     private const uint FILE_ATTRIBUTE_NORMAL = 0x00000080;
     private const uint FILE_ATTRIBUTE_DIRECTORY = 0x00000010;
+    private const int MaxSmallCacheEntries = 256;
+    private const int MaxLargeCacheEntries = 64;
 
     private readonly ConcurrentDictionary<string, ImageSource> _smallIconCache = new(StringComparer.OrdinalIgnoreCase);
     private readonly ConcurrentDictionary<string, ImageSource> _largeIconCache = new(StringComparer.OrdinalIgnoreCase);
@@ -52,10 +54,39 @@ public sealed class IconCacheService
 
         var cacheKey = GetCacheKey(item);
         if (_smallIconCache.TryGetValue(cacheKey, out var cachedSmall))
+        {
             item.SmallIcon = cachedSmall;
-        else
-            item.SmallIcon = item.IsFolder ? _defaultFolderIcon : _defaultFileIcon;
+            item.LargeIcon ??= _largeIconCache.TryGetValue(cacheKey, out var cachedLarge) ? cachedLarge : cachedSmall;
+            return;
+        }
 
+        var fallback = item.IsFolder ? _defaultFolderIcon : _defaultFileIcon;
+        item.SmallIcon = fallback;
+        item.LargeIcon ??= fallback;
+
+        ThreadPool.QueueUserWorkItem(_ =>
+        {
+            TrimCacheIfNeeded(_smallIconCache, MaxSmallCacheEntries);
+            var small = _smallIconCache.GetOrAdd(cacheKey, _ => LoadIconForItem(item, large: false));
+
+            Application.Current?.Dispatcher.BeginInvoke(
+                () =>
+                {
+                    item.SmallIcon = small;
+                    if (ReferenceEquals(item.LargeIcon, fallback))
+                        item.LargeIcon = small;
+                },
+                System.Windows.Threading.DispatcherPriority.Background
+            );
+        });
+    }
+
+    public void PopulateLargeIconAsync(SearchResultItem item)
+    {
+        if (item.IsWeb || item.IsSetting)
+            return;
+
+        var cacheKey = GetCacheKey(item);
         if (_largeIconCache.TryGetValue(cacheKey, out var cachedLarge))
         {
             item.LargeIcon = cachedLarge;
@@ -64,15 +95,28 @@ public sealed class IconCacheService
 
         ThreadPool.QueueUserWorkItem(_ =>
         {
-            var small = _smallIconCache.GetOrAdd(cacheKey, _ => LoadIconForItem(item, large: false));
+            TrimCacheIfNeeded(_largeIconCache, MaxLargeCacheEntries);
             var large = _largeIconCache.GetOrAdd(cacheKey, _ => LoadIconForItem(item, large: true));
 
-            Application.Current?.Dispatcher.BeginInvoke(() =>
-            {
-                item.SmallIcon = small;
-                item.LargeIcon = large;
-            });
+            Application.Current?.Dispatcher.BeginInvoke(
+                () => item.LargeIcon = large,
+                System.Windows.Threading.DispatcherPriority.Background
+            );
         });
+    }
+
+    private static void TrimCacheIfNeeded(ConcurrentDictionary<string, ImageSource> cache, int maxEntries)
+    {
+        if (cache.Count <= maxEntries)
+            return;
+
+        int toRemove = cache.Count - (maxEntries * 3 / 4);
+        foreach (var key in cache.Keys)
+        {
+            if (toRemove-- <= 0)
+                break;
+            cache.TryRemove(key, out _);
+        }
     }
 
     private static string GetCacheKey(SearchResultItem item)
@@ -81,28 +125,27 @@ public sealed class IconCacheService
             return "__FOLDER__";
 
         var ext = Path.GetExtension(item.FullPath);
-        if (ext.Equals(".exe", StringComparison.OrdinalIgnoreCase) ||
-            ext.Equals(".lnk", StringComparison.OrdinalIgnoreCase) ||
-            ext.Equals(".ico", StringComparison.OrdinalIgnoreCase) ||
-            ext.Equals(".appref-ms", StringComparison.OrdinalIgnoreCase))
-        {
+        if (IsPerFileIconExtension(ext))
             return item.FullPath;
-        }
 
-        return string.IsNullOrEmpty(ext) ? item.FullPath : $"__EXT__{ext.ToLowerInvariant()}";
+        return string.IsNullOrEmpty(ext) ? "__NO_EXT__" : $"__EXT__{ext.ToLowerInvariant()}";
     }
+
+    private static bool IsPerFileIconExtension(string ext) =>
+        ext.Equals(".exe", StringComparison.OrdinalIgnoreCase)
+        || ext.Equals(".lnk", StringComparison.OrdinalIgnoreCase)
+        || ext.Equals(".ico", StringComparison.OrdinalIgnoreCase)
+        || ext.Equals(".msc", StringComparison.OrdinalIgnoreCase)
+        || ext.Equals(".appref-ms", StringComparison.OrdinalIgnoreCase)
+        || ext.Equals(".url", StringComparison.OrdinalIgnoreCase);
 
     private ImageSource LoadIconForItem(SearchResultItem item, bool large)
     {
         var ext = Path.GetExtension(item.FullPath);
-        bool perFileIcon = ext.Equals(".exe", StringComparison.OrdinalIgnoreCase)
-                           || ext.Equals(".lnk", StringComparison.OrdinalIgnoreCase)
-                           || ext.Equals(".ico", StringComparison.OrdinalIgnoreCase)
-                           || ext.Equals(".msc", StringComparison.OrdinalIgnoreCase);
-
-        bool useAttributesOnly = !perFileIcon && (!File.Exists(item.FullPath) && !Directory.Exists(item.FullPath));
-        var target = useAttributesOnly && !item.IsFolder && !string.IsNullOrEmpty(ext)
-            ? ext
+        bool perFileIcon = !item.IsFolder && IsPerFileIconExtension(ext);
+        bool useAttributesOnly = !perFileIcon;
+        var target = useAttributesOnly
+            ? (item.IsFolder ? "folder" : (string.IsNullOrEmpty(ext) ? ".file" : ext))
             : item.FullPath;
 
         var extracted = ExtractShellIcon(target, item.IsFolder, large, useAttributesOnly);

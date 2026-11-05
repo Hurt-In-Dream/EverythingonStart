@@ -31,6 +31,8 @@ public sealed class EverythingSearchService : IDisposable
     private IntPtr _pipeClient;
     private bool _usePipeSdk;
     private bool _useIpcSdk;
+    private bool _pipeFastRunCountSort;
+    private bool _ipcFastRunCountSort;
     private string _activeEngineDescription = "未连接";
     private string _configuredInstanceName = string.Empty;
 
@@ -99,6 +101,7 @@ public sealed class EverythingSearchService : IDisposable
             if (handle != IntPtr.Zero)
             {
                 _pipeClient = handle;
+                _pipeFastRunCountSort = Everything3_IsPropertyFastSort(handle, PropertyIdRunCount);
                 uint major = Everything3_GetMajorVersion(handle);
                 uint minor = Everything3_GetMinorVersion(handle);
                 uint rev = Everything3_GetRevision(handle);
@@ -113,6 +116,7 @@ public sealed class EverythingSearchService : IDisposable
 
     private bool TryConnectIpcLocked()
     {
+        const uint SortRunCountDescending = 19;
         string[] candidates = string.IsNullOrEmpty(_configuredInstanceName)
             ? ["", "1.5a"]
             : [_configuredInstanceName, "", "1.5a"];
@@ -123,6 +127,7 @@ public sealed class EverythingSearchService : IDisposable
             uint major = Everything_GetMajorVersion();
             if (major > 0)
             {
+                _ipcFastRunCountSort = Everything_IsFastSort(SortRunCountDescending);
                 uint minor = Everything_GetMinorVersion();
                 uint rev = Everything_GetRevision();
                 var instanceLabel = string.IsNullOrEmpty(candidate) ? "默认实例" : candidate;
@@ -219,7 +224,7 @@ public sealed class EverythingSearchService : IDisposable
             Everything3_SetSearchMatchWholeWords(searchState, false);
             Everything3_SetSearchRegex(searchState, false);
 
-            if (Everything3_IsPropertyFastSort(_pipeClient, PropertyIdRunCount))
+            if (_pipeFastRunCountSort)
                 Everything3_AddSearchSort(searchState, PropertyIdRunCount, ascending: false);
             Everything3_AddSearchSort(searchState, PropertyIdName, ascending: true);
 
@@ -280,34 +285,41 @@ public sealed class EverythingSearchService : IDisposable
         Everything_SetMatchPath(false);
         Everything_SetMatchWholeWord(false);
         Everything_SetRegex(false);
-        Everything_SetSort(Everything_IsFastSort(SortRunCountDescending) ? SortRunCountDescending : SortNameAscending);
+        Everything_SetSort(_ipcFastRunCountSort ? SortRunCountDescending : SortNameAscending);
         Everything_SetOffset(0);
         Everything_SetMax((uint)maxResults);
 
         if (!Everything_QueryW(true))
             return new EverythingQueryResult(Array.Empty<SearchResultItem>(), 0);
 
-        int totalCount = (int)Everything_GetTotResults();
-        uint count = Everything_GetNumResults();
-        var list = new List<SearchResultItem>((int)count);
-        char* buffer = stackalloc char[PathBufferLength];
-
-        for (uint i = 0; i < count; i++)
+        try
         {
-            bool isFile = Everything_IsFileResult(i);
-            uint len = Everything_GetResultFullPathNameW(i, buffer, PathBufferLength);
-            if (len == 0)
-                continue;
+            int totalCount = (int)Everything_GetTotResults();
+            uint count = Everything_GetNumResults();
+            var list = new List<SearchResultItem>((int)count);
+            char* buffer = stackalloc char[PathBufferLength];
 
-            var fullPath = new string(buffer, 0, (int)Math.Min(len, PathBufferLength - 1));
-            Everything_GetResultSize(i, out long size);
-            Everything_GetResultDateModified(i, out FILETIME ft);
-            DateTime? modified = FileTimeToDateTime(ft);
+            for (uint i = 0; i < count; i++)
+            {
+                bool isFile = Everything_IsFileResult(i);
+                uint len = Everything_GetResultFullPathNameW(i, buffer, PathBufferLength);
+                if (len == 0)
+                    continue;
 
-            list.Add(CreateResultItem(fullPath, !isFile, size, modified));
+                var fullPath = new string(buffer, 0, (int)Math.Min(len, PathBufferLength - 1));
+                Everything_GetResultSize(i, out long size);
+                Everything_GetResultDateModified(i, out FILETIME ft);
+                DateTime? modified = FileTimeToDateTime(ft);
+
+                list.Add(CreateResultItem(fullPath, !isFile, size, modified));
+            }
+
+            return new EverythingQueryResult(list, totalCount);
         }
-
-        return new EverythingQueryResult(list, totalCount);
+        finally
+        {
+            Everything_CleanUp();
+        }
     }
 
     private static SearchResultItem CreateResultItem(string fullPath, bool isFolder, long sizeBytes, DateTime? modified)
@@ -528,4 +540,7 @@ public sealed class EverythingSearchService : IDisposable
 
     [DllImport("Everything64.dll")]
     private static extern bool Everything_GetResultDateModified(uint nIndex, out FILETIME lpFileTime);
+
+    [DllImport("Everything64.dll")]
+    private static extern void Everything_CleanUp();
 }

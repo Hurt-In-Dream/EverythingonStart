@@ -25,6 +25,7 @@ public sealed class WinKeyHookService : IDisposable
 
     private const uint LLKHF_INJECTED = 0x00000010;
     private const uint KEYEVENTF_KEYUP = 0x0002;
+    private const uint PROCESS_QUERY_LIMITED_INFORMATION = 0x1000;
     private const int ASFW_ANY = -1;
 
     private readonly AppSettingsService _settingsService;
@@ -32,6 +33,7 @@ public sealed class WinKeyHookService : IDisposable
     private readonly IAppVisibility? _appVisibility;
     private IntPtr _hookHandle;
     private IntPtr _mainWindowHwnd;
+    private IntPtr _lastNormalFgHwnd;
 
     private bool _winKeyDown;
     private bool _otherKeyPressedWhileWinDown;
@@ -123,6 +125,7 @@ public sealed class WinKeyHookService : IDisposable
                             }
 
                             // 默认模式：放行 Win 键让系统正常弹出带磁贴的开始菜单及全屏下的任务栏
+                            _lastNormalFgHwnd = IntPtr.Zero;
                             bool wasAlreadyOpen = IsNativeStartMenuOpen();
                             _startMenuSessionArmed = !wasAlreadyOpen;
                             _lastSingleWinReleaseTick = Environment.TickCount64;
@@ -136,7 +139,8 @@ public sealed class WinKeyHookService : IDisposable
                     {
                         _otherKeyPressedWhileWinDown = true;
                     }
-                    else if (_settingsService.Current.TriggerMode == Models.WinKeyTriggerMode.InterceptTypingInStartMenu)
+                    else if (_settingsService.Current.TriggerMode == Models.WinKeyTriggerMode.InterceptTypingInStartMenu &&
+                             IsPrintableKeyCandidate(vk))
                     {
                         long now = Environment.TickCount64;
 
@@ -150,7 +154,7 @@ public sealed class WinKeyHookService : IDisposable
                             return 1;
                         }
 
-                        if (TryMapPrintableKey(vk, out var typedChar) && ShouldInterceptStartMenuTyping(now))
+                        if (ShouldInterceptStartMenuTyping(now) && TryMapPrintableKey(vk, out var typedChar))
                         {
                             _startMenuSessionArmed = false;
                             _handoverWindowUntilTick = now + 260;
@@ -170,27 +174,47 @@ public sealed class WinKeyHookService : IDisposable
         return CallNextHookEx(_hookHandle, nCode, wParam, lParam);
     }
 
+    private static bool IsPrintableKeyCandidate(int vk) =>
+        vk is (>= 0x41 and <= 0x5A) or (>= 0x30 and <= 0x39) or (>= 0x60 and <= 0x69) or 0xBE or 0xBD;
+
     private bool ShouldInterceptStartMenuTyping(long nowTick)
     {
         var fg = GetForegroundWindow();
         if (_mainWindowHwnd != IntPtr.Zero && fg == _mainWindowHwnd)
             return false;
 
-        if (IsNativeStartMenuOpen())
+        if (!_startMenuSessionArmed && fg != IntPtr.Zero && fg == _lastNormalFgHwnd)
+            return false;
+
+        if (IsNativeStartMenuOpen(fg))
             return true;
 
-        if (_startMenuSessionArmed && (nowTick - _lastSingleWinReleaseTick) is >= 0 and <= 850)
-            return true;
+        if (_startMenuSessionArmed)
+        {
+            if ((nowTick - _lastSingleWinReleaseTick) is >= 0 and <= 850)
+                return true;
+
+            _startMenuSessionArmed = false;
+        }
+
+        if (fg != IntPtr.Zero)
+            _lastNormalFgHwnd = fg;
 
         return false;
     }
 
-    public bool IsNativeStartMenuOpen()
+    public bool IsNativeStartMenuOpen() => IsNativeStartMenuOpen(GetForegroundWindow());
+
+    private bool IsNativeStartMenuOpen(IntPtr fg)
     {
         if (_appVisibility != null && _appVisibility.IsLauncherVisible(out bool launcherVisible) == 0 && launcherVisible)
             return true;
 
-        var fg = GetForegroundWindow();
+        return IsStartMenuHostWindowZeroAlloc(fg);
+    }
+
+    private static unsafe bool IsStartMenuHostWindowZeroAlloc(IntPtr fg)
+    {
         if (fg == IntPtr.Zero)
             return false;
 
@@ -198,11 +222,30 @@ public sealed class WinKeyHookService : IDisposable
         if (pid == 0)
             return false;
 
-        using var proc = Process.GetProcessById((int)pid);
-        var name = proc.ProcessName;
-        return name.Equals("StartMenuExperienceHost", StringComparison.OrdinalIgnoreCase)
-               || name.Equals("SearchHost", StringComparison.OrdinalIgnoreCase)
-               || name.Equals("ShellExperienceHost", StringComparison.OrdinalIgnoreCase);
+        IntPtr hProcess = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid);
+        if (hProcess == IntPtr.Zero)
+            return false;
+
+        try
+        {
+            const int bufferCapacity = 260;
+            char* buffer = stackalloc char[bufferCapacity];
+            uint size = bufferCapacity;
+            if (!QueryFullProcessImageNameW(hProcess, 0, buffer, ref size) || size == 0)
+                return false;
+
+            ReadOnlySpan<char> fullPath = new(buffer, (int)size);
+            int lastSlash = fullPath.LastIndexOfAny('\\', '/');
+            ReadOnlySpan<char> fileName = lastSlash >= 0 ? fullPath[(lastSlash + 1)..] : fullPath;
+
+            return fileName.Equals("StartMenuExperienceHost.exe", StringComparison.OrdinalIgnoreCase)
+                   || fileName.Equals("SearchHost.exe", StringComparison.OrdinalIgnoreCase)
+                   || fileName.Equals("ShellExperienceHost.exe", StringComparison.OrdinalIgnoreCase);
+        }
+        finally
+        {
+            CloseHandle(hProcess);
+        }
     }
 
     public static void DismissNativeStartMenu()
@@ -337,4 +380,18 @@ public sealed class WinKeyHookService : IDisposable
 
     [DllImport("user32.dll")]
     private static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint lpdwProcessId);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern IntPtr OpenProcess(uint dwDesiredAccess, bool bInheritHandle, uint dwProcessId);
+
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    private static extern unsafe bool QueryFullProcessImageNameW(
+        IntPtr hProcess,
+        uint dwFlags,
+        char* lpExeName,
+        ref uint lpdwSize
+    );
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern bool CloseHandle(IntPtr hObject);
 }

@@ -12,6 +12,7 @@
     <AssemblyName>EverythingonStart</AssemblyName>
     <RootNamespace>EverythingonStart</RootNamespace>
     <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
+    <GarbageCollectionAdaptationMode>1</GarbageCollectionAdaptationMode>
   </PropertyGroup>
 
   <ItemGroup>

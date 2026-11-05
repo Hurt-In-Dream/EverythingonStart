@@ -42,6 +42,7 @@ public partial class MainWindow : Window
 
     private readonly ObservableCollection<SearchListEntry> _entries = [];
     private CancellationTokenSource? _searchCts;
+    private ITaskbarList? _taskbarList;
     private SearchCategory _currentCategory = SearchCategory.All;
     private SearchResultItem? _selectedItem;
     private bool _suppressDeactivateHide;
@@ -106,17 +107,19 @@ public partial class MainWindow : Window
         }
     }
 
-    private static void RemoveFromTaskbarTabList(IntPtr hwnd)
+    private void RemoveFromTaskbarTabList(IntPtr hwnd)
     {
-        var taskbarListType = Type.GetTypeFromCLSID(new Guid("56FDF344-FD6D-11d0-958A-006097C9A090"));
-        if (taskbarListType == null)
-            return;
-
-        if (Activator.CreateInstance(taskbarListType) is ITaskbarList taskbarList)
+        if (_taskbarList == null)
         {
-            taskbarList.HrInit();
-            taskbarList.DeleteTab(hwnd);
+            var taskbarListType = Type.GetTypeFromCLSID(new Guid("56FDF344-FD6D-11d0-958A-006097C9A090"));
+            if (taskbarListType != null && Activator.CreateInstance(taskbarListType) is ITaskbarList instance)
+            {
+                instance.HrInit();
+                _taskbarList = instance;
+            }
         }
+
+        _taskbarList?.DeleteTab(hwnd);
     }
 
     public void PreWarm()
@@ -128,6 +131,7 @@ public partial class MainWindow : Window
         UpdateLayout();
         Hide();
         ShowActivated = true;
+        TrimProcessMemoryAsync();
     }
 
     public void TogglePopup()
@@ -250,7 +254,22 @@ public partial class MainWindow : Window
 
         _taskbarKeepTopTimer.Stop();
         _searchCts?.Cancel();
+        RootCardBorder.BeginAnimation(OpacityProperty, null);
+        PopupSlideTransform.BeginAnimation(System.Windows.Media.TranslateTransform.YProperty, null);
+        PopupScaleTransform.BeginAnimation(System.Windows.Media.ScaleTransform.ScaleXProperty, null);
+        PopupScaleTransform.BeginAnimation(System.Windows.Media.ScaleTransform.ScaleYProperty, null);
         Hide();
+        TrimProcessMemoryAsync();
+    }
+
+    private static void TrimProcessMemoryAsync()
+    {
+        ThreadPool.QueueUserWorkItem(_ =>
+        {
+            GC.Collect(1, GCCollectionMode.Optimized, blocking: false);
+            using var currentProcess = System.Diagnostics.Process.GetCurrentProcess();
+            K32EmptyWorkingSet(currentProcess.Handle);
+        });
     }
 
     public void RevealAndRaiseTaskbar()
@@ -831,6 +850,7 @@ public partial class MainWindow : Window
             return;
         }
 
+        _iconCacheService.PopulateLargeIconAsync(item);
         PreviewIconImage.Source = item.DisplayPreviewIcon;
         PreviewTitleText.Text = item.Title;
         PreviewSubtitleText.Text = item.Subtitle;
@@ -1245,4 +1265,7 @@ public partial class MainWindow : Window
 
     [DllImport("user32.dll")]
     private static extern bool AttachThreadInput(uint idAttach, uint idAttachTo, bool fAttach);
+
+    [DllImport("kernel32.dll")]
+    private static extern bool K32EmptyWorkingSet(IntPtr hProcess);
 }
