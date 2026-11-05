@@ -1,6 +1,5 @@
 using System.Diagnostics;
 using System.Runtime.InteropServices;
-using System.Text;
 
 namespace EverythingonStart.Services;
 
@@ -14,13 +13,13 @@ public sealed class WinKeyHookService : IDisposable
 
     private const int VK_LWIN = 0x5B;
     private const int VK_RWIN = 0x5C;
+    private const int VK_SHIFT = 0x10;
     private const int VK_CONTROL = 0x11;
     private const int VK_LCONTROL = 0xA2;
     private const int VK_RCONTROL = 0xA3;
     private const int VK_MENU = 0x12;
     private const int VK_LMENU = 0xA4;
     private const int VK_RMENU = 0xA5;
-    private const int VK_ESCAPE = 0x1B;
     private const byte VK_DUMMY_MASK = 0xFF;
 
     private const uint LLKHF_INJECTED = 0x00000010;
@@ -28,19 +27,39 @@ public sealed class WinKeyHookService : IDisposable
 
     private readonly AppSettingsService _settingsService;
     private readonly LowLevelKeyboardProc _hookProc;
+    private readonly IAppVisibility? _appVisibility;
     private IntPtr _hookHandle;
+    private IntPtr _mainWindowHwnd;
 
     private bool _winKeyDown;
     private bool _otherKeyPressedWhileWinDown;
+    private bool _startMenuSessionArmed;
     private long _lastSingleWinReleaseTick;
+    private long _handoverWindowUntilTick;
 
     public event Action? SingleWinKeyTapped;
     public event Action<string>? StartMenuTypingIntercepted;
+    public event Action<string>? AdditionalTypingIntercepted;
 
     public WinKeyHookService(AppSettingsService settingsService)
     {
         _settingsService = settingsService;
         _hookProc = HookCallback;
+        _appVisibility = CreateAppVisibilityInstance();
+    }
+
+    public void SetMainWindowHandle(IntPtr hwnd)
+    {
+        _mainWindowHwnd = hwnd;
+    }
+
+    private static IAppVisibility? CreateAppVisibilityInstance()
+    {
+        var type = Type.GetTypeFromCLSID(new Guid("7E5FE3D9-985F-4908-91F9-EE19F9FD1514"));
+        if (type == null)
+            return null;
+
+        return Activator.CreateInstance(type) as IAppVisibility;
     }
 
     public void Start()
@@ -101,7 +120,11 @@ public sealed class WinKeyHookService : IDisposable
                                 return 1;
                             }
 
+                            // 默认模式：放行 Win 键让系统正常弹出带磁贴的开始菜单及全屏下的任务栏
+                            bool wasAlreadyOpen = IsNativeStartMenuOpen();
+                            _startMenuSessionArmed = !wasAlreadyOpen;
                             _lastSingleWinReleaseTick = Environment.TickCount64;
+                            SingleWinKeyTapped?.Invoke();
                         }
                     }
                 }
@@ -113,10 +136,22 @@ public sealed class WinKeyHookService : IDisposable
                     }
                     else if (_settingsService.Current.TriggerMode == Models.WinKeyTriggerMode.InterceptTypingInStartMenu)
                     {
-                        if (TryMapPrintableKey(vk, out var typedChar) && IsStartMenuOrSearchHostActive())
+                        long now = Environment.TickCount64;
+
+                        // 如果正在从开始菜单切换到 EverythingonStart 的焦点的短暂窗口期内，继续捕获快速连打的按键
+                        if (now < _handoverWindowUntilTick &&
+                            _mainWindowHwnd != IntPtr.Zero &&
+                            GetForegroundWindow() != _mainWindowHwnd &&
+                            TryMapPrintableKey(vk, out var extraChar))
                         {
-                            _lastSingleWinReleaseTick = 0;
-                            DismissNativeStartMenu();
+                            AdditionalTypingIntercepted?.Invoke(extraChar);
+                            return 1;
+                        }
+
+                        if (TryMapPrintableKey(vk, out var typedChar) && ShouldInterceptStartMenuTyping(now))
+                        {
+                            _startMenuSessionArmed = false;
+                            _handoverWindowUntilTick = now + 260;
                             StartMenuTypingIntercepted?.Invoke(typedChar);
                             return 1;
                         }
@@ -128,33 +163,28 @@ public sealed class WinKeyHookService : IDisposable
         return CallNextHookEx(_hookHandle, nCode, wParam, lParam);
     }
 
-    private static void SuppressNativeStartMenuAndReleaseWinKey(byte winVk)
+    private bool ShouldInterceptStartMenuTyping(long nowTick)
     {
-        keybd_event(VK_DUMMY_MASK, 0, 0, UIntPtr.Zero);
-        keybd_event(VK_DUMMY_MASK, 0, KEYEVENTF_KEYUP, UIntPtr.Zero);
-        keybd_event(winVk, 0, KEYEVENTF_KEYUP, UIntPtr.Zero);
+        var fg = GetForegroundWindow();
+        if (_mainWindowHwnd != IntPtr.Zero && fg == _mainWindowHwnd)
+            return false;
+
+        if (IsNativeStartMenuOpen())
+            return true;
+
+        if (_startMenuSessionArmed && (nowTick - _lastSingleWinReleaseTick) is >= 0 and <= 850)
+            return true;
+
+        return false;
     }
 
-    private static void DismissNativeStartMenu()
+    public bool IsNativeStartMenuOpen()
     {
-        keybd_event(VK_ESCAPE, 0, 0, UIntPtr.Zero);
-        keybd_event(VK_ESCAPE, 0, KEYEVENTF_KEYUP, UIntPtr.Zero);
-    }
-
-    private bool IsStartMenuOrSearchHostActive()
-    {
-        long elapsed = Environment.TickCount64 - _lastSingleWinReleaseTick;
-        if (elapsed is >= 0 and <= 8000)
+        if (_appVisibility != null && _appVisibility.IsLauncherVisible(out bool launcherVisible) == 0 && launcherVisible)
             return true;
 
         var fg = GetForegroundWindow();
         if (fg == IntPtr.Zero)
-            return false;
-
-        var className = new StringBuilder(128);
-        GetClassNameW(fg, className, className.Capacity);
-        var cls = className.ToString();
-        if (cls is not ("Windows.UI.Core.CoreWindow" or "XamlExplorerHostIslandWindow"))
             return false;
 
         GetWindowThreadProcessId(fg, out uint pid);
@@ -164,7 +194,15 @@ public sealed class WinKeyHookService : IDisposable
         using var proc = Process.GetProcessById((int)pid);
         var name = proc.ProcessName;
         return name.Equals("StartMenuExperienceHost", StringComparison.OrdinalIgnoreCase)
-               || name.Equals("SearchHost", StringComparison.OrdinalIgnoreCase);
+               || name.Equals("SearchHost", StringComparison.OrdinalIgnoreCase)
+               || name.Equals("ShellExperienceHost", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static void SuppressNativeStartMenuAndReleaseWinKey(byte winVk)
+    {
+        keybd_event(VK_DUMMY_MASK, 0, 0, UIntPtr.Zero);
+        keybd_event(VK_DUMMY_MASK, 0, KEYEVENTF_KEYUP, UIntPtr.Zero);
+        keybd_event(winVk, 0, KEYEVENTF_KEYUP, UIntPtr.Zero);
     }
 
     private static bool TryMapPrintableKey(int vk, out string text)
@@ -181,15 +219,36 @@ public sealed class WinKeyHookService : IDisposable
         if (ctrlDown || altDown)
             return false;
 
+        bool shiftDown = (GetAsyncKeyState(VK_SHIFT) & 0x8000) != 0;
+
         if (vk is >= 0x41 and <= 0x5A)
         {
-            text = ((char)(vk + 32)).ToString();
+            char c = (char)(shiftDown ? vk : vk + 32);
+            text = c.ToString();
             return true;
         }
 
-        if (vk is >= 0x30 and <= 0x39)
+        if (vk is >= 0x30 and <= 0x39 && !shiftDown)
         {
             text = ((char)vk).ToString();
+            return true;
+        }
+
+        if (vk is >= 0x60 and <= 0x69)
+        {
+            text = ((char)('0' + (vk - 0x60))).ToString();
+            return true;
+        }
+
+        if (vk == 0xBE && !shiftDown)
+        {
+            text = ".";
+            return true;
+        }
+
+        if (vk == 0xBD)
+        {
+            text = shiftDown ? "_" : "-";
             return true;
         }
 
@@ -199,6 +258,24 @@ public sealed class WinKeyHookService : IDisposable
     public void Dispose()
     {
         Stop();
+    }
+
+    [ComImport]
+    [Guid("2246EA2D-CAEA-4444-A3C4-6DE827E44313")]
+    [InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+    private interface IAppVisibility
+    {
+        [PreserveSig]
+        int GetAppVisibilityOnMonitor(IntPtr hMonitor, out int pMode);
+
+        [PreserveSig]
+        int IsLauncherVisible([MarshalAs(UnmanagedType.Bool)] out bool pfVisible);
+
+        [PreserveSig]
+        int Advise(IntPtr pCallback, out uint pdwCookie);
+
+        [PreserveSig]
+        int Unadvise(uint dwCookie);
     }
 
     private delegate IntPtr LowLevelKeyboardProc(int nCode, IntPtr wParam, IntPtr lParam);
@@ -238,9 +315,6 @@ public sealed class WinKeyHookService : IDisposable
 
     [DllImport("user32.dll")]
     private static extern IntPtr GetForegroundWindow();
-
-    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
-    private static extern int GetClassNameW(IntPtr hWnd, StringBuilder lpClassName, int nMaxCount);
 
     [DllImport("user32.dll")]
     private static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint lpdwProcessId);

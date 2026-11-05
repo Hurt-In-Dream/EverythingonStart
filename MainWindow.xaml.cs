@@ -6,6 +6,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Interop;
+using System.Windows.Media.Animation;
 using System.Windows.Threading;
 using EverythingonStart.Models;
 using EverythingonStart.Services;
@@ -16,6 +17,7 @@ namespace EverythingonStart;
 public partial class MainWindow : Window
 {
     private static readonly IntPtr HWND_TOPMOST = new(-1);
+    private const int GWLP_HWNDPARENT = -8;
     private const uint SWP_NOSIZE = 0x0001;
     private const uint SWP_NOMOVE = 0x0002;
     private const uint SWP_NOACTIVATE = 0x0010;
@@ -29,6 +31,8 @@ public partial class MainWindow : Window
     private readonly WebSuggestionService _webSuggestionService;
     private readonly IconCacheService _iconCacheService;
     private readonly ActionExecutorService _actionExecutor;
+    private readonly DispatcherTimer _taskbarKeepTopTimer;
+    private int _taskbarKeepTopTicksRemaining;
 
     private readonly ObservableCollection<SearchListEntry> _entries = [];
     private CancellationTokenSource? _searchCts;
@@ -57,6 +61,22 @@ public partial class MainWindow : Window
         InitializeComponent();
         ResultsListBox.ItemsSource = _entries;
 
+        _taskbarKeepTopTimer = new DispatcherTimer
+        {
+            Interval = TimeSpan.FromMilliseconds(75)
+        };
+        _taskbarKeepTopTimer.Tick += (_, _) =>
+        {
+            if (!IsVisible || _taskbarKeepTopTicksRemaining <= 0)
+            {
+                _taskbarKeepTopTimer.Stop();
+                return;
+            }
+
+            _taskbarKeepTopTicksRemaining--;
+            RevealAndRaiseTaskbar();
+        };
+
         UpdateEngineBadge();
         PopulateDefaultLandingEntries();
     }
@@ -68,6 +88,7 @@ public partial class MainWindow : Window
         var hwnd = new WindowInteropHelper(this).Handle;
         if (hwnd != IntPtr.Zero)
         {
+            SetWindowLongPtrW(hwnd, GWLP_HWNDPARENT, IntPtr.Zero);
             RemoveFromTaskbarTabList(hwnd);
         }
     }
@@ -110,7 +131,6 @@ public partial class MainWindow : Window
 
     public void ShowPopup(string? initialText)
     {
-        RevealAndRaiseTaskbar();
         PositionLikeStartMenu();
         UpdateEngineBadge();
 
@@ -118,8 +138,13 @@ public partial class MainWindow : Window
             Show();
 
         Opacity = 1.0;
+        PlayPopupShowAnimation();
         ActivateWindowForcefully();
         RevealAndRaiseTaskbar();
+
+        _taskbarKeepTopTicksRemaining = 6;
+        _taskbarKeepTopTimer.Stop();
+        _taskbarKeepTopTimer.Start();
 
         if (!string.IsNullOrEmpty(initialText))
         {
@@ -138,17 +163,74 @@ public partial class MainWindow : Window
             PopulateDefaultLandingEntries();
     }
 
+    public void AppendTypedText(string extraText)
+    {
+        if (string.IsNullOrEmpty(extraText))
+            return;
+
+        SearchTextBox.Text += extraText;
+        SearchTextBox.CaretIndex = SearchTextBox.Text.Length;
+        SearchTextBox.Focus();
+    }
+
+    private void PlayPopupShowAnimation()
+    {
+        var slideEase = new QuinticEase { EasingMode = EasingMode.EaseOut };
+        var fadeEase = new CubicEase { EasingMode = EasingMode.EaseOut };
+        var slideDuration = TimeSpan.FromMilliseconds(220);
+
+        RootCardBorder.BeginAnimation(
+            OpacityProperty,
+            new DoubleAnimation(0.0, 1.0, TimeSpan.FromMilliseconds(160))
+            {
+                EasingFunction = fadeEase
+            }
+        );
+
+        PopupSlideTransform.BeginAnimation(
+            System.Windows.Media.TranslateTransform.YProperty,
+            new DoubleAnimation(36.0, 0.0, slideDuration)
+            {
+                EasingFunction = slideEase
+            }
+        );
+
+        var scaleAnim = new DoubleAnimation(0.96, 1.0, slideDuration)
+        {
+            EasingFunction = slideEase
+        };
+        PopupScaleTransform.BeginAnimation(System.Windows.Media.ScaleTransform.ScaleXProperty, scaleAnim);
+        PopupScaleTransform.BeginAnimation(System.Windows.Media.ScaleTransform.ScaleYProperty, scaleAnim);
+    }
+
     public void HidePopup()
     {
         if (!IsVisible)
             return;
 
+        _taskbarKeepTopTimer.Stop();
         _searchCts?.Cancel();
         Hide();
     }
 
     public void RevealAndRaiseTaskbar()
     {
+        var selfHwnd = new WindowInteropHelper(this).Handle;
+        if (selfHwnd != IntPtr.Zero)
+        {
+            SetWindowLongPtrW(selfHwnd, GWLP_HWNDPARENT, IntPtr.Zero);
+            RemoveFromTaskbarTabList(selfHwnd);
+            SetWindowPos(
+                selfHwnd,
+                HWND_TOPMOST,
+                0,
+                0,
+                0,
+                0,
+                SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_SHOWWINDOW
+            );
+        }
+
         var taskbarHwnd = FindWindowW("Shell_TrayWnd", null);
         if (taskbarHwnd != IntPtr.Zero)
         {
@@ -177,20 +259,6 @@ public partial class MainWindow : Window
             ShowWindow(secondaryHwnd, SW_SHOWNOACTIVATE);
             SetWindowPos(
                 secondaryHwnd,
-                HWND_TOPMOST,
-                0,
-                0,
-                0,
-                0,
-                SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_SHOWWINDOW
-            );
-        }
-
-        var selfHwnd = new WindowInteropHelper(this).Handle;
-        if (selfHwnd != IntPtr.Zero)
-        {
-            SetWindowPos(
-                selfHwnd,
                 HWND_TOPMOST,
                 0,
                 0,
@@ -1045,6 +1113,9 @@ public partial class MainWindow : Window
         public RECT rc;
         public IntPtr lParam;
     }
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr SetWindowLongPtrW(IntPtr hWnd, int nIndex, IntPtr dwNewLong);
 
     [DllImport("user32.dll", CharSet = CharSet.Unicode)]
     private static extern IntPtr FindWindowW(string? lpClassName, string? lpWindowName);

@@ -7,7 +7,8 @@ namespace EverythingonStart.Services;
 
 public sealed class AppSettings
 {
-    public WinKeyTriggerMode TriggerMode { get; set; } = WinKeyTriggerMode.DirectOnSingleWinTap;
+    public int Version { get; set; } = 2;
+    public WinKeyTriggerMode TriggerMode { get; set; } = WinKeyTriggerMode.InterceptTypingInStartMenu;
     public WebSearchEngine SearchEngine { get; set; } = WebSearchEngine.Bing;
     public string EverythingInstanceName { get; set; } = string.Empty;
 }
@@ -40,7 +41,18 @@ public sealed class AppSettingsService
         var json = File.ReadAllText(_settingsFilePath);
         var loaded = JsonSerializer.Deserialize<AppSettings>(json);
         if (loaded != null)
+        {
+            if (loaded.Version < 2)
+            {
+                loaded.Version = 2;
+                loaded.TriggerMode = WinKeyTriggerMode.InterceptTypingInStartMenu;
+                Current = loaded;
+                Save();
+                return;
+            }
+
             Current = loaded;
+        }
     }
 
     public void Save()

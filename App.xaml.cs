@@ -101,13 +101,34 @@ public partial class App : System.Windows.Application
         _mainWindow.PreWarm();
 
         _winKeyHookService = new WinKeyHookService(_settingsService);
+        _winKeyHookService.SetMainWindowHandle(new System.Windows.Interop.WindowInteropHelper(_mainWindow).Handle);
         _winKeyHookService.SingleWinKeyTapped += () =>
         {
-            Dispatcher.BeginInvoke(() => _mainWindow.TogglePopup());
+            Dispatcher.BeginInvoke(() =>
+            {
+                if (_settingsService.Current.TriggerMode == WinKeyTriggerMode.DirectOnSingleWinTap)
+                {
+                    _mainWindow.TogglePopup();
+                }
+                else if (_mainWindow.IsVisible)
+                {
+                    _mainWindow.HidePopup();
+                }
+            });
         };
         _winKeyHookService.StartMenuTypingIntercepted += typedText =>
         {
-            Dispatcher.BeginInvoke(() => _mainWindow.ShowPopup(typedText));
+            Dispatcher.BeginInvoke(
+                () => _mainWindow.ShowPopup(typedText),
+                System.Windows.Threading.DispatcherPriority.Send
+            );
+        };
+        _winKeyHookService.AdditionalTypingIntercepted += extraText =>
+        {
+            Dispatcher.BeginInvoke(
+                () => _mainWindow.AppendTypedText(extraText),
+                System.Windows.Threading.DispatcherPriority.Send
+            );
         };
         _winKeyHookService.Start();
     }
