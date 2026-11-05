@@ -33,6 +33,12 @@ public partial class App : System.Windows.Application
             return;
         }
 
+        if (e.Args.Contains("--replace", StringComparer.OrdinalIgnoreCase))
+        {
+            TerminateOtherInstances();
+            CleanupOldBinaries();
+        }
+
         _instanceMutex = new Mutex(true, MutexName, out bool createdNew);
         if (!createdNew)
         {
@@ -46,6 +52,32 @@ public partial class App : System.Windows.Application
         InitializeCoreServices();
         InitializeTrayIcon();
         StartToggleSignalListener();
+    }
+
+    private static void TerminateOtherInstances()
+    {
+        int currentPid = Environment.ProcessId;
+        foreach (var proc in Process.GetProcesses())
+        {
+            using (proc)
+            {
+                if (proc.Id != currentPid &&
+                    proc.ProcessName.StartsWith("EverythingonStart", StringComparison.OrdinalIgnoreCase))
+                {
+                    proc.Kill();
+                    proc.WaitForExit(2000);
+                }
+            }
+        }
+    }
+
+    private static void CleanupOldBinaries()
+    {
+        var baseDir = AppContext.BaseDirectory;
+        foreach (var oldFile in System.IO.Directory.EnumerateFiles(baseDir, "*.old*"))
+        {
+            System.IO.File.Delete(oldFile);
+        }
     }
 
     private void InitializeCoreServices()
@@ -165,6 +197,19 @@ public partial class App : System.Windows.Application
 
         var window = new MainWindow(settings, everything, startMenu, webService, iconService, actionExecutor);
         window.PreWarm();
+        window.ResultsListBox.UpdateLayout();
+
+        double firstSelectableRowHeight = 0;
+        for (int i = 0; i < window.ResultsListBox.Items.Count; i++)
+        {
+            if (window.ResultsListBox.Items[i] is SearchListEntry { IsHeader: false } &&
+                window.ResultsListBox.ItemContainerGenerator.ContainerFromIndex(i) is FrameworkElement container)
+            {
+                container.UpdateLayout();
+                firstSelectableRowHeight = container.ActualHeight;
+                break;
+            }
+        }
 
         var querySw = Stopwatch.StartNew();
         var docQuery = everything.Query("rar", SearchCategory.Documents, 10);
@@ -186,6 +231,7 @@ public partial class App : System.Windows.Application
         stdout.WriteLine($"[SelfTest] Everything Query Elapsed: {querySw.Elapsed.TotalMilliseconds:F2} ms");
         stdout.WriteLine($"[SelfTest] Apps('电脑') Returned={apps.Count}, Settings('任务栏') Returned={sysSettings.Count}");
         stdout.WriteLine($"[SelfTest] ShowInTaskbar={window.ShowInTaskbar}");
+        stdout.WriteLine($"[SelfTest] FirstSelectableRowHeight={firstSelectableRowHeight:F1} px");
         stdout.WriteLine($"[SelfTest] Total SelfTest Elapsed: {sw.Elapsed.TotalMilliseconds:F2} ms");
 
         Shutdown(0);

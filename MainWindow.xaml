@@ -367,7 +367,6 @@
 
                                 <!-- 结果条目行 -->
                                 <Border x:Name="ItemRowBorder"
-                                        Visibility="{Binding IsHeader, Converter={StaticResource BoolToVis}, ConverterParameter=Invert}"
                                         CornerRadius="6"
                                         Padding="10,7"
                                         Background="Transparent"
@@ -375,6 +374,7 @@
                                         MouseLeftButtonUp="OnResultRowMouseLeftButtonUp">
                                     <Border.Style>
                                         <Style TargetType="Border">
+                                            <Setter Property="Visibility" Value="Visible" />
                                             <Style.Triggers>
                                                 <DataTrigger Binding="{Binding IsHeader}" Value="True">
                                                     <Setter Property="Visibility" Value="Collapsed" />
@@ -397,7 +397,7 @@
                                     <Grid>
                                         <Grid.ColumnDefinitions>
                                             <ColumnDefinition Width="Auto" />
-                                            <ColumnDefinition Width="1.5*" />
+                                            <ColumnDefinition Width="*" />
                                         </Grid.ColumnDefinitions>
 
                                         <!-- 左侧选中指示竖条 -->
