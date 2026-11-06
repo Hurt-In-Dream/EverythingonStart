@@ -2,6 +2,16 @@
 
 复刻 Windows 11 原生开始菜单搜索双栏体验的极速聚合搜索启动器。底层本地文件检索直连 Everything（支持 Everything 1.5 `Everything3.dll` 命名管道与 Everything 1.4/1.5 `Everything64.dll` IPC），同时聚合开始菜单应用、Windows 11 系统设置与实时 Web 联网搜索建议。
 
+## 下载与快速开始
+
+从 [GitHub Releases](https://github.com/Hurt-In-Dream/EverythingonStart/releases/latest) 下载 Windows x64 压缩包。
+完整解压后运行 `EverythingonStart.exe`，不要只复制 EXE；自包含发行包无需额外安装 .NET 运行时。
+推荐 Windows 11 x64。文件检索需要安装并在后台运行 [Everything](https://www.voidtools.com/downloads/)。
+首次启动后，按 `Win` 打开原生开始菜单并直接输入，或从系统托盘打开设置，切换为单按 `Win` 直接呼出。
+
+更新前请先从托盘退出旧实例，再解压并运行新版。设置保存在 `%LOCALAPPDATA%\EverythingonStart\settings.json`，不随程序文件删除。
+发行包尚未进行代码签名；可使用同一 Release 的 `SHA256SUMS.txt` 校验下载文件。
+
 ---
 
 ## 核心特性
@@ -12,17 +22,18 @@
 - **完整保留系统组合键**：所有 `Win + 组合键`（如 `Win + E`、`Win + R`、`Win + D`、`Win + L`、`Win + V`、`Win + Shift + S`）均保持系统原生行为。
 
 ### 2. 开始菜单尺寸自动识别与多设备自适应缩放
-- **动态探测原生开始菜单尺寸**：通过 [`StartMenuBoundsService`](file:///e:/EverythingonStart/Services/StartMenuBoundsService.cs) 自动探测当前显示器上 Windows 11 原生开始菜单窗口的实际卡片尺寸，并结合当前屏幕工作区高度、DPI 缩放比例计算窗口宽高与界面缩放比例（`ScaleTransform`）。
+- **动态探测原生开始菜单尺寸**：通过 [`StartMenuBoundsService`](Services/StartMenuBoundsService.cs) 自动探测当前显示器上 Windows 11 原生开始菜单窗口的实际卡片尺寸，并结合当前屏幕工作区高度、DPI 缩放比例计算窗口宽高与界面缩放比例（`ScaleTransform`）。
 - **多显示器与任务栏布局适配**：自动识别任务栏位置（底部居中、底部靠左、顶部或侧边任务栏），精确停靠在开始菜单弹出位置。支持在设置中心切换自动缩放与手动缩放比例（`80%` - `135%`）。
 
 ### 3. 无任务栏图标与全屏窗口任务栏保留
-- **任务栏零图标占用**：搜索窗口同时配置 `ShowInTaskbar = false`、移除 `WS_EX_APPWINDOW`、启用 `WS_EX_TOOLWINDOW` 扩展样式，并通过 `ITaskbarList2::DeleteTab` 确保运行与呼出期间不在任务栏产生图标。
+- **任务栏零图标占用**：搜索窗口配置 `ShowInTaskbar = false`、移除 `WS_EX_APPWINDOW` 与 `WS_EX_TOOLWINDOW`，并通过隐藏 Owner 窗口和 `ITaskbarList2::DeleteTab` 确保运行与呼出期间不在任务栏产生图标。
 - **全屏应用呼出时保留任务栏**：当用户在全屏游戏或全屏应用中按下 `Win` 键触发搜索时，自动通过 `ITaskbarList2::MarkFullscreenWindow` 与窗口 Z 序调整唤醒底部任务栏，保持与原生开始菜单一致的视觉层级。
+- **不覆盖切换后的窗口**：收起搜索面板时保留窗口层级，避免此前任务栏定位重新置顶全屏窗口、导致 Alt+Tab 选中的窗口被遮挡。
 
 ### 4. 多数据源毫秒级聚合与流畅交互动画
-- **本地文件与文件夹**：通过 [`EverythingSearchService`](file:///e:/EverythingonStart/Services/EverythingSearchService.cs) 直连 Everything 实时索引，毫秒级返回最佳匹配、应用、文档、文件夹与照片结果。
-- **开始菜单应用与系统设置**：[`StartMenuIndexService`](file:///e:/EverythingonStart/Services/StartMenuIndexService.cs) 内存常驻索引系统与用户开始菜单快捷方式及 30+ 项常用 Windows 11 `ms-settings:` 系统设置（统一采用 `mingcute:settings-4-line` 矢量设置图标）。
-- **实时 Web 联网搜索建议**：[`WebSuggestionService`](file:///e:/EverythingonStart/Services/WebSuggestionService.cs) 异步获取搜索联想词，支持一键通过 Bing、Google、百度或 DuckDuckGo 在默认浏览器中打开搜索结果。
+- **本地文件与文件夹**：通过 [`EverythingSearchService`](Services/EverythingSearchService.cs) 直连 Everything 实时索引，毫秒级返回最佳匹配、应用、文档、文件夹与照片结果。
+- **开始菜单应用与系统设置**：[`StartMenuIndexService`](Services/StartMenuIndexService.cs) 内存常驻索引系统与用户开始菜单快捷方式及 30+ 项常用 Windows 11 `ms-settings:` 系统设置（统一采用 `mingcute:settings-4-line` 矢量设置图标）。
+- **实时 Web 联网搜索建议**：[`WebSuggestionService`](Services/WebSuggestionService.cs) 异步获取搜索联想词，支持一键通过 Bing、Google、百度或 DuckDuckGo 在默认浏览器中打开搜索结果。
 - **高性能阴影隔离与微浮动动画**：窗口阴影独立为启用 `<BitmapCache />` 的兄弟背景层，搜索列表与操作按钮具备平滑的鼠标悬停高亮及微浮动位移动画，结合 14ms 输入防抖与单键元组排序，确保高频输入与滚动零卡顿。
 
 ### 5. 排序方式、附加类型筛选与三种文件类型配置模式
@@ -63,17 +74,18 @@ flowchart LR
 
 | 文件路径 | 功能职责 |
 | --- | --- |
-| [`App.xaml.cs`](file:///e:/EverythingonStart/App.xaml.cs) | 单实例互斥锁、系统托盘菜单、命令行参数处理（`--replace`、`--self-test`）与核心服务生命周期管理 |
-| [`MainWindow.xaml`](file:///e:/EverythingonStart/MainWindow.xaml) / [`MainWindow.xaml.cs`](file:///e:/EverythingonStart/MainWindow.xaml.cs) | 双栏搜索主界面、分类胶囊切换、排序与扩展筛选下拉框、详情面板及悬停浮动动画 |
-| [`SettingsWindow.xaml`](file:///e:/EverythingonStart/SettingsWindow.xaml) / [`SettingsWindow.xaml.cs`](file:///e:/EverythingonStart/SettingsWindow.xaml.cs) | 四分页设置中心窗口（分类与文件类型、排序与搜索规则、交互与呼出行为、外观缩放与系统） |
-| [`Models/SearchModels.cs`](file:///e:/EverythingonStart/Models/SearchModels.cs) | 搜索分类、排序枚举、筛选模式、初始搜索项模式与列表条目数据模型 |
-| [`Services/AppSettingsService.cs`](file:///e:/EverythingonStart/Services/AppSettingsService.cs) | `%LOCALAPPDATA%\EverythingonStart\settings.json` 配置读写与开机自启注册表管理 |
-| [`Services/EverythingSearchService.cs`](file:///e:/EverythingonStart/Services/EverythingSearchService.cs) | `Everything3.dll` 与 `Everything64.dll` 双引擎检索封装、`Filters.csv` 与 `Everything.ini` 解析 |
-| [`Services/StartMenuBoundsService.cs`](file:///e:/EverythingonStart/Services/StartMenuBoundsService.cs) | 原生开始菜单窗口探测、跨分辨率自适应尺寸与缩放系数计算 |
-| [`Services/WinKeyHookService.cs`](file:///e:/EverythingonStart/Services/WinKeyHookService.cs) | `WH_KEYBOARD_LL` 键盘钩子、单按 `Win` 键识别与原生开始菜单打字拦截 |
-| [`Services/StartMenuIndexService.cs`](file:///e:/EverythingonStart/Services/StartMenuIndexService.cs) | 开始菜单程序索引与 Windows 11 `ms-settings:` 系统设置条目匹配 |
-| [`Services/IconCacheService.cs`](file:///e:/EverythingonStart/Services/IconCacheService.cs) | 文件系统图标缓存与 `mingcute:settings-4-line` 矢量设置图标渲染 |
-| [`Services/ActionExecutorService.cs`](file:///e:/EverythingonStart/Services/ActionExecutorService.cs) | 文件打开、管理员运行、文件所有权获取、定位文件位置与跳转 Everything 窗口 |
+| [`App.xaml.cs`](App.xaml.cs) | 单实例互斥锁、系统托盘菜单、命令行参数处理（`--replace`、`--self-test`）与核心服务生命周期管理 |
+| [`MainWindow.xaml`](MainWindow.xaml) / [`MainWindow.xaml.cs`](MainWindow.xaml.cs) | 双栏搜索主界面、分类胶囊切换、排序与扩展筛选下拉框、详情面板及悬停浮动动画 |
+| [`SettingsWindow.xaml`](SettingsWindow.xaml) / [`SettingsWindow.xaml.cs`](SettingsWindow.xaml.cs) | 四分页设置中心窗口（分类与文件类型、排序与搜索规则、交互与呼出行为、外观缩放与系统） |
+| [`Models/SearchModels.cs`](Models/SearchModels.cs) | 搜索分类、排序枚举、筛选模式、初始搜索项模式与列表条目数据模型 |
+| [`Services/AppSettingsService.cs`](Services/AppSettingsService.cs) | `%LOCALAPPDATA%\EverythingonStart\settings.json` 配置读写与开机自启注册表管理 |
+| [`Services/EverythingSearchService.cs`](Services/EverythingSearchService.cs) | `Everything3.dll` 与 `Everything64.dll` 双引擎检索封装、`Filters.csv` 与 `Everything.ini` 解析 |
+| [`Services/StartMenuBoundsService.cs`](Services/StartMenuBoundsService.cs) | 原生开始菜单窗口探测、跨分辨率自适应尺寸与缩放系数计算 |
+| [`Services/WinKeyHookService.cs`](Services/WinKeyHookService.cs) | `WH_KEYBOARD_LL` 键盘钩子、单按 `Win` 键识别与原生开始菜单打字拦截 |
+| [`Services/StartMenuIndexService.cs`](Services/StartMenuIndexService.cs) | 开始菜单程序索引与 Windows 11 `ms-settings:` 系统设置条目匹配 |
+| [`Services/IconCacheService.cs`](Services/IconCacheService.cs) | 文件系统图标缓存与 `mingcute:settings-4-line` 矢量设置图标渲染 |
+| [`Services/ActionExecutorService.cs`](Services/ActionExecutorService.cs) | 文件打开、管理员运行、文件所有权获取、定位文件位置与跳转 Everything 窗口 |
+| [`Services/AppThemeService.cs`](Services/AppThemeService.cs) / [`Themes/ThemeResources.xaml`](Themes/ThemeResources.xaml) | 可选系统/浅色/深色主题、系统强调色与动态界面资源 |
 
 ---
 
@@ -135,6 +147,16 @@ flowchart LR
 dotnet build EverythingonStart.csproj -c Release -p:Platform=x64
 ```
 
+### 构建发行包
+
+从已提交且工作区干净的源码构建自包含 Windows x64 压缩包、对应源码包与 SHA256 校验文件：
+
+```powershell
+pwsh -NoProfile -File .\Scripts\Publish-Release.ps1
+```
+
+产物默认位于 `artifacts/`。详细回归测试命令见 [Tests/README.md](Tests/README.md)。
+
 ### 运行与命令行参数
 ```powershell
 # 启动常驻进程（若已在运行则唤醒搜索面板）
@@ -146,3 +168,14 @@ dotnet build EverythingonStart.csproj -c Release -p:Platform=x64
 # 运行内置自动化自检并输出诊断报告
 .\bin\x64\Release\net10.0-windows\EverythingonStart.exe --self-test
 ```
+
+## 许可证与第三方组件
+
+Copyright (C) 2026 Hurt-In-Dream and contributors.
+
+本项目原创源码按 **GNU GPL v3.0（GPL-3.0-only）** 发布，见 [LICENSE](LICENSE)。
+你可以在该许可证条件下使用、修改和重新分发；本程序不提供任何担保，包括适销性或特定用途适用性担保。
+每个 Release 均提供与二进制构建提交对应的源码压缩包及构建脚本。
+第三方 Everything SDK、MingCute 图标和 .NET 运行时保留各自版权与许可证，见 [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md)。
+
+问题反馈请提交到 [GitHub Issues](https://github.com/Hurt-In-Dream/EverythingonStart/issues)。
