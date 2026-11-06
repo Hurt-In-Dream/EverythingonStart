@@ -1,210 +1,178 @@
 using System.ComponentModel;
 using System.Runtime.InteropServices;
 using System.Windows;
+using System.Windows.Controls;
 using System.Windows.Interop;
 using System.Windows.Media;
-using System.Windows.Media.Imaging;
-using System.Windows.Threading;
-using EverythingonStart.Controls;
 
 namespace EverythingonStart.Services;
 
+// Per-window DWM composition only. No bitmap acquisition, wallpaper files, GIFs or foreign-process hooks.
 public sealed class WindowBackdropService : IDisposable
 {
     private readonly Window _window;
-    private readonly GaussianBlurBackdrop _backdrop;
+    private readonly Border _surface;
+    private readonly FrameworkElement? _shadow;
     private readonly AppSettingsService _settings;
-    private readonly Func<Rect, BitmapSource?> _wallpaperReader;
-    private readonly DesktopWallpaperService _wallpaperService;
-    private readonly DispatcherTimer _refreshTimer;
+    private readonly Func<IntPtr, bool, bool> _nativeApply;
     private readonly Func<bool> _highContrastReader;
+    private readonly AppThemeService? _theme;
     private HwndSource? _source;
-    private bool _preparedForShow;
     private bool _disposed;
-    private Rect _lastRegion = Rect.Empty;
-    public string SourceDescription => "Windows 桌面壁纸图层（非屏幕或窗口截图）";
+    private bool _lastEnabled;
+    public bool IsApplied { get; private set; }
+    public string SourceDescription => IsApplied ? "实时 DWM/Accent 亚克力合成（无截图、无本地预览）" : "原有主题背景（关闭或系统不可用）";
 
-    public WindowBackdropService(Window window, GaussianBlurBackdrop backdrop, AppSettingsService settings,
-        Func<Rect, BitmapSource?>? wallpaperReader = null, Func<bool>? highContrastReader = null)
+    public WindowBackdropService(Window window, Border surface, AppSettingsService settings,
+        FrameworkElement? shadow = null, Func<IntPtr, bool, bool>? nativeApply = null, Func<bool>? highContrastReader = null)
     {
-        _window = window;
-        _backdrop = backdrop;
-        _settings = settings;
-        _wallpaperService = new DesktopWallpaperService();
-        _wallpaperReader = wallpaperReader ?? _wallpaperService.ReadRegion;
-        _refreshTimer = new DispatcherTimer(DispatcherPriority.Background) { Interval = TimeSpan.FromMilliseconds(80) };
-        _refreshTimer.Tick += (_, _) => { _refreshTimer.Stop(); if (_window.IsVisible) TryLoadWallpaper(new WindowInteropHelper(_window).Handle, force: true); };
+        _window = window; _surface = surface; _settings = settings; _shadow = shadow;
+        _nativeApply = nativeApply ?? ApplyNativeBackdrop;
         _highContrastReader = highContrastReader ?? (() => SystemParameters.HighContrast);
+        _theme = Application.Current?.Resources["AppThemeService"] as AppThemeService;
+        if (_theme != null) _theme.ThemeChanged += OnThemeChanged;
         window.SourceInitialized += OnSourceInitialized;
         window.IsVisibleChanged += OnVisibilityChanged;
+        surface.SizeChanged += OnSurfaceSizeChanged;
+        surface.Loaded += OnSurfaceLoaded;
         window.Closed += OnClosed;
         SystemParameters.StaticPropertyChanged += OnSystemParameterChanged;
         AttachSource();
         ApplyCurrentSettings();
     }
 
-    public void ApplyCurrentSettings()
-    {
-        ApplyVisualState(refreshIfNeeded: true);
-    }
-
-    private void ApplyVisualState(bool refreshIfNeeded)
-    {
-        _window.Dispatcher.VerifyAccess();
-        if (_disposed)
-            return;
-        _backdrop.BlurRadius = Math.Clamp(_settings.Current.GaussianBlurRadius, 6, 40);
-        double opacity = _settings.Current.WindowOpacityPercent;
-        _backdrop.TintOpacity = Math.Clamp(double.IsFinite(opacity) ? opacity : 95, 75, 100) / 100;
-        if (!_settings.Current.EnableGaussianBlur || _highContrastReader())
-        {
-            _backdrop.ClearSnapshot();
-            _wallpaperService.ClearCache();
-            _refreshTimer.Stop();
-            _preparedForShow = false;
-            _lastRegion = Rect.Empty;
-        }
-        else if (_backdrop.Snapshot == null)
-        {
-            _backdrop.Visibility = Visibility.Hidden; // Measure before loading wallpaper without drawing an empty tint.
-            if (refreshIfNeeded) QueueRefresh();
-        }
-    }
-
-    public void PrepareForShow()
-    {
-        ApplyCurrentSettings();
-        var hwnd = new WindowInteropHelper(_window).Handle;
-        if (hwnd != IntPtr.Zero)
-            TryLoadWallpaper(hwnd, force: _window.IsVisible);
-        // The source is a wallpaper file/layer; visibility never contaminates it with other windows.
-    }
-
-    private void OnSourceInitialized(object? sender, EventArgs e) => AttachSource();
-
     private void AttachSource()
     {
-        if (_source != null || _disposed)
-            return;
+        if (_source != null || _disposed) return;
         var hwnd = new WindowInteropHelper(_window).Handle;
-        if (hwnd == IntPtr.Zero)
-            return;
+        if (hwnd == IntPtr.Zero) return;
         _source = HwndSource.FromHwnd(hwnd);
         _source?.AddHook(HandleWindowMessage);
     }
 
-    private IntPtr HandleWindowMessage(IntPtr hwnd, int message, IntPtr wParam, IntPtr lParam, ref bool handled)
+    private void OnSourceInitialized(object? sender, EventArgs e)
     {
-        if (_disposed)
-            return IntPtr.Zero;
-        if (message == 0x0018 && wParam != IntPtr.Zero && !IsWindowVisible(hwnd)) // WM_SHOWWINDOW, before display
-            TryLoadWallpaper(hwnd);
-        else if (message == 0x0046 && lParam != IntPtr.Zero && !IsWindowVisible(hwnd)) // WM_WINDOWPOSCHANGING
-        {
-            var position = Marshal.PtrToStructure<WINDOWPOS>(lParam);
-            if ((position.Flags & 0x0040) != 0) // SWP_SHOWWINDOW: use the final centered/moved bounds.
-                TryLoadWallpaper(hwnd, position);
-        }
-        else if (message is 0x0047 or 0x02E0 && _window.IsVisible) // movement/resize/DPI: coalesced, not continuous capture
-            QueueRefresh();
-        else if (message is 0x001A or 0x007E) // wallpaper/display preference changed
-        {
-            _wallpaperService.ClearCache(); _lastRegion = Rect.Empty; QueueRefresh();
-        }
-        return IntPtr.Zero;
+        AttachSource();
+        ApplyCurrentSettings();
     }
 
-    private void TryLoadWallpaper(IntPtr hwnd, WINDOWPOS? position = null, bool force = false)
+    public void ApplyCurrentSettings()
     {
-        if (_disposed || (_preparedForShow && !force) || !_settings.Current.EnableGaussianBlur || _highContrastReader())
-            return;
-        ApplyVisualState(refreshIfNeeded: false);
-        _window.UpdateLayout();
-        if (!GetWindowRect(hwnd, out var bounds) || _source?.CompositionTarget == null
-            || _backdrop.ActualWidth <= 0 || _backdrop.ActualHeight <= 0)
+        _window.Dispatcher.VerifyAccess();
+        if (_disposed) return;
+        var hwnd = new WindowInteropHelper(_window).Handle;
+        bool enabled = _settings.Current.EnableGaussianBlur && !_highContrastReader() && !_window.AllowsTransparency;
+        if (_source?.CompositionTarget != null)
+            _source.CompositionTarget.BackgroundColor = Colors.Transparent;
+        bool applied = hwnd != IntPtr.Zero && _nativeApply(hwnd, enabled);
+        IsApplied = enabled && applied;
+        _lastEnabled = enabled;
+        if (_shadow != null) _shadow.Visibility = IsApplied ? Visibility.Collapsed : Visibility.Visible;
+        string key = _window is MainWindow ? "Theme.SearchBackgroundBrush" : "Theme.WindowBackgroundBrush";
+        if (IsApplied && Application.Current?.TryFindResource(key) is SolidColorBrush brush)
         {
-            _backdrop.ClearSnapshot();
-            return;
+            var color = brush.Color;
+            color.A = (byte)Math.Round(Math.Clamp(_settings.Current.WindowOpacityPercent, 75, 100) * 255 / 100);
+            var tint = new SolidColorBrush(color); tint.Freeze(); _surface.Background = tint;
         }
-        if (position is { } pending && (pending.Flags & 0x0002) == 0) // not SWP_NOMOVE
-        {
-            bounds.Left = pending.X;
-            bounds.Top = pending.Y;
-        }
-        var offset = _backdrop.TranslatePoint(new Point(), _window);
-        var device = _source.CompositionTarget.TransformToDevice;
-        var region = new Rect(Math.Round(bounds.Left + offset.X * device.M11),
-            Math.Round(bounds.Top + offset.Y * device.M22),
-            Math.Ceiling(_backdrop.ActualWidth * device.M11), Math.Ceiling(_backdrop.ActualHeight * device.M22));
-        _preparedForShow = true;
-        if (force && region == _lastRegion && _backdrop.Snapshot != null) return;
-        _lastRegion = region;
-        try
-        {
-            var snapshot = _wallpaperReader(region);
-            if (snapshot != null)
-                _backdrop.SetSnapshot(snapshot);
-            else
-                _backdrop.ClearSnapshot();
-        }
-        catch (Exception ex) when (ex is Win32Exception or ExternalException or ArgumentException or System.IO.IOException or UnauthorizedAccessException or NotSupportedException)
-        {
-            // Unavailable wallpaper falls back to the theme. Never fall back to reading screen pixels.
-            _backdrop.ClearSnapshot();
-        }
+        else _surface.SetResourceReference(Border.BackgroundProperty, key);
+        UpdateWindowRegion();
+    }
+
+    public void PrepareForShow() => ApplyCurrentSettings();
+
+    private void OnSurfaceSizeChanged(object sender, SizeChangedEventArgs e) => UpdateWindowRegion();
+    private void OnSurfaceLoaded(object sender, RoutedEventArgs e) => UpdateWindowRegion();
+
+    private void UpdateWindowRegion()
+    {
+        if (_disposed) return;
+        var hwnd = new WindowInteropHelper(_window).Handle;
+        if (hwnd == IntPtr.Zero) return;
+        if (!IsApplied) { SetWindowRgn(hwnd, IntPtr.Zero, true); return; }
+        if (_surface.ActualWidth <= 0 || _surface.ActualHeight <= 0 || !GetWindowRect(hwnd, out var bounds)) return;
+        // Clip native acrylic to the actual rounded card, not its transparent WPF shadow margins.
+        var topLeft = _surface.PointToScreen(new Point());
+        var bottomRight = _surface.PointToScreen(new Point(_surface.ActualWidth, _surface.ActualHeight));
+        var dpi = VisualTreeHelper.GetDpi(_surface);
+        int diameter = (int)Math.Round(_surface.CornerRadius.TopLeft * 2 * dpi.DpiScaleX);
+        var region = CreateRoundRectRgn((int)Math.Round(topLeft.X - bounds.Left), (int)Math.Round(topLeft.Y - bounds.Top),
+            (int)Math.Round(bottomRight.X - bounds.Left) + 1, (int)Math.Round(bottomRight.Y - bounds.Top) + 1, diameter, diameter);
+        if (region != IntPtr.Zero && SetWindowRgn(hwnd, region, true) == 0) DeleteObject(region);
     }
 
     private void OnVisibilityChanged(object sender, DependencyPropertyChangedEventArgs e)
     {
-        if (e.NewValue is false)
-        {
-            _backdrop.ClearSnapshot();
-            _wallpaperService.ClearCache();
-            _refreshTimer.Stop();
-            _lastRegion = Rect.Empty;
-            _preparedForShow = false;
-        }
-        else QueueRefresh();
+        if (_window.IsVisible) ApplyCurrentSettings();
     }
 
+    private IntPtr HandleWindowMessage(IntPtr hwnd, int message, IntPtr wParam, IntPtr lParam, ref bool handled)
+    {
+        if (!_disposed && message is 0x001A or 0x031A or 0x031E) // settings/theme/DWM composition changes
+            _window.Dispatcher.InvokeAsync(ApplyCurrentSettings);
+        return IntPtr.Zero;
+    }
+    private void OnThemeChanged(object? sender, EventArgs e) => ApplyCurrentSettings();
     private void OnSystemParameterChanged(object? sender, PropertyChangedEventArgs e)
     {
-        if (e.PropertyName == nameof(SystemParameters.HighContrast))
-            _window.Dispatcher.InvokeAsync(ApplyCurrentSettings);
+        if (e.PropertyName == nameof(SystemParameters.HighContrast)) _window.Dispatcher.InvokeAsync(ApplyCurrentSettings);
     }
-
     private void OnClosed(object? sender, EventArgs e) => Dispose();
 
-    private void QueueRefresh()
+    public static bool ApplyNativeBackdrop(IntPtr hwnd, bool enabled)
     {
-        if (!_disposed && _window.IsVisible && _settings.Current.EnableGaussianBlur && !_highContrastReader() && !_refreshTimer.IsEnabled)
-            _refreshTimer.Start();
+        if (hwnd == IntPtr.Zero) return false;
+        try
+        {
+            if (DwmIsCompositionEnabled(out bool composition) < 0 || !composition) return false;
+            // A composited non-layered WPF window exposes client alpha to DWM without capturing any pixels.
+            var margins = new MARGINS { Left = -1, Right = -1, Top = -1, Bottom = -1 };
+            if (DwmExtendFrameIntoClientArea(hwnd, ref margins) < 0) return false;
+            int corner = 2; DwmSetWindowAttribute(hwnd, 33, ref corner, sizeof(int));
+            int none = 1; DwmSetWindowAttribute(hwnd, 38, ref none, sizeof(int));
+            var accent = new ACCENT_POLICY { State = enabled ? 4 : 0, Flags = 2, Color = enabled ? 0x01000000u : 0u };
+            IntPtr memory = Marshal.AllocHGlobal(Marshal.SizeOf<ACCENT_POLICY>());
+            try
+            {
+                Marshal.StructureToPtr(accent, memory, false);
+                var data = new WINDOWCOMPOSITIONATTRIBDATA { Attribute = 19, Data = memory, Size = Marshal.SizeOf<ACCENT_POLICY>() };
+                if (SetWindowCompositionAttribute(hwnd, ref data)) return true;
+            }
+            finally { Marshal.FreeHGlobal(memory); }
+            // Public SystemBackdrop fallback, as used by DWMBlurGlass's DWMAPI path on Windows 11 22H2+.
+            int material = enabled ? 3 : 1;
+            return DwmSetWindowAttribute(hwnd, 38, ref material, sizeof(int)) >= 0;
+        }
+        catch (Exception ex) when (ex is EntryPointNotFoundException or DllNotFoundException) { return false; }
     }
 
     public void Dispose()
     {
-        if (_disposed)
-            return;
+        if (_disposed) return;
+        var hwnd = new WindowInteropHelper(_window).Handle;
+        if (hwnd != IntPtr.Zero && _lastEnabled) _nativeApply(hwnd, false);
         _disposed = true;
-        _refreshTimer.Stop();
-        _wallpaperService.Dispose();
+        if (_theme != null) _theme.ThemeChanged -= OnThemeChanged;
         _window.SourceInitialized -= OnSourceInitialized;
         _window.IsVisibleChanged -= OnVisibilityChanged;
+        _surface.SizeChanged -= OnSurfaceSizeChanged;
+        _surface.Loaded -= OnSurfaceLoaded;
         _window.Closed -= OnClosed;
         SystemParameters.StaticPropertyChanged -= OnSystemParameterChanged;
-        if (_source is { IsDisposed: false })
-            _source.RemoveHook(HandleWindowMessage);
-        _source = null;
-        _backdrop.ClearSnapshot();
+        if (_source is { IsDisposed: false }) _source.RemoveHook(HandleWindowMessage);
+        _source = null; IsApplied = false;
     }
 
+    [StructLayout(LayoutKind.Sequential)] private struct MARGINS { public int Left, Right, Top, Bottom; }
+    [StructLayout(LayoutKind.Sequential)] private struct ACCENT_POLICY { public int State, Flags; public uint Color; public int Animation; }
+    [StructLayout(LayoutKind.Sequential)] private struct WINDOWCOMPOSITIONATTRIBDATA { public int Attribute; public IntPtr Data; public int Size; }
     [StructLayout(LayoutKind.Sequential)] private struct RECT { public int Left, Top, Right, Bottom; }
-    [StructLayout(LayoutKind.Sequential)] private struct WINDOWPOS
-    {
-        public IntPtr Hwnd, InsertAfter;
-        public int X, Y, Width, Height;
-        public uint Flags;
-    }
-    [DllImport("user32.dll")] private static extern bool IsWindowVisible(IntPtr hwnd);
     [DllImport("user32.dll")] private static extern bool GetWindowRect(IntPtr hwnd, out RECT rect);
+    [DllImport("user32.dll")] private static extern int SetWindowRgn(IntPtr hwnd, IntPtr region, [MarshalAs(UnmanagedType.Bool)] bool redraw);
+    [DllImport("gdi32.dll")] private static extern IntPtr CreateRoundRectRgn(int left, int top, int right, int bottom, int ellipseWidth, int ellipseHeight);
+    [DllImport("gdi32.dll")] private static extern bool DeleteObject(IntPtr handle);
+    [DllImport("dwmapi.dll")] private static extern int DwmIsCompositionEnabled([MarshalAs(UnmanagedType.Bool)] out bool enabled);
+    [DllImport("dwmapi.dll")] private static extern int DwmExtendFrameIntoClientArea(IntPtr hwnd, ref MARGINS margins);
+    [DllImport("dwmapi.dll")] private static extern int DwmSetWindowAttribute(IntPtr hwnd, int attribute, ref int value, int size);
+    [DllImport("user32.dll")] private static extern bool SetWindowCompositionAttribute(IntPtr hwnd, ref WINDOWCOMPOSITIONATTRIBDATA data);
 }

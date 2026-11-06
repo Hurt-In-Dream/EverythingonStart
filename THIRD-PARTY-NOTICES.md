@@ -52,4 +52,10 @@ These components retain their MIT license and applicable third-party notices.
 - Runtime source: https://github.com/dotnet/runtime
 - WPF source: https://github.com/dotnet/wpf
 - Windows Forms source: https://github.com/dotnet/winforms
-- The exact bundled framework versions are recorded in the release's `EverythingonStart.runtimeconfig.json`.
+- The runtime configuration is embedded in the single-file executable. v1.4.0 release packages use .NET and Windows Desktop runtime 10.0.13.
+
+## DWMBlurGlass implementation reference
+
+- Reference: https://github.com/Maplespe/DWMBlurGlass/tree/e3a160c849c35415a4b959462815eebc6870270b
+- Consulted its Accent state definitions and DWMAPI SystemBackdrop path to implement per-window native composition.
+- No DWMBlurGlass source, binary, global injector or private DWM hooks are distributed here; the service is independently implemented using Windows interop.

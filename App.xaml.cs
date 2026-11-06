@@ -29,10 +29,24 @@ public partial class App : System.Windows.Application
     private WinKeyHookService? _winKeyHookService;
     private MainWindow? _mainWindow;
     private Forms.NotifyIcon? _trayIcon;
+    private Icon? _trayApplicationIcon;
 
     protected override void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
+        if (e.Args.Contains("--package-self-test", StringComparer.OrdinalIgnoreCase))
+        {
+            using var stdout = new System.IO.StreamWriter(Console.OpenStandardOutput()) { AutoFlush = true };
+            Shutdown(PackageDiagnosticsService.Run(stdout));
+            return;
+        }
+        if (e.Args.Contains("--licenses", StringComparer.OrdinalIgnoreCase))
+        {
+            using var stdout = new System.IO.StreamWriter(Console.OpenStandardOutput()) { AutoFlush = true };
+            PackageDiagnosticsService.PrintLicenses(stdout);
+            Shutdown(0);
+            return;
+        }
 
         if (e.Args.Contains("--self-test", StringComparer.OrdinalIgnoreCase))
         {
@@ -225,9 +239,10 @@ public partial class App : System.Windows.Application
             Shutdown();
         });
 
+        _trayApplicationIcon = AppIconService.CreateTrayIcon();
         _trayIcon = new Forms.NotifyIcon
         {
-            Icon = SystemIcons.Application,
+            Icon = _trayApplicationIcon,
             Text = "EverythingonStart - 开始菜单极速搜索",
             ContextMenuStrip = menu,
             Visible = true
@@ -259,6 +274,7 @@ public partial class App : System.Windows.Application
                 {
                     _trayIcon.Visible = false;
                     _trayIcon.Dispose();
+                    _trayApplicationIcon?.Dispose();
                 }
 
                 _winKeyHookService?.Dispose();
@@ -437,6 +453,7 @@ public partial class App : System.Windows.Application
             _trayIcon.Visible = false;
             _trayIcon.Dispose();
         }
+        _trayApplicationIcon?.Dispose();
 
         _toggleRegisteredWait?.Unregister(null);
         _shutdownRegisteredWait?.Unregister(null);

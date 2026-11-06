@@ -38,26 +38,20 @@ pwsh -NoProfile -File .\Tests\Test-FullscreenSwitch.ps1
 前台句柄、显示器尺寸与 Shell 通知使用隔离输入，不发送全局 Alt+Tab，不修改用户窗口或系统任务栏。
 这验证窗口层级缺陷，不替代具体全屏游戏的人工切换测试。
 
-## 背景高斯模糊回归测试
+## 原生 DWM 背景模糊与图标回归
 
 ```powershell
-pwsh -NoProfile -File .\Tests\Test-GaussianBlur.ps1 -AppAssemblyDirectory .\bin\x64\Release\net10.0-windows
+pwsh -NoProfile -File .\Tests\Test-NativeBackdrop.ps1 -AppAssemblyDirectory .\bin\x64\Release\net10.0-windows
 ```
 
-使用屏幕外 WPF 窗口及注入的棋盘格背景，验证默认关闭、设置保存/重载、首次显示的壁纸图层、
-高对比度和失败回退、隐藏/关闭后清除像素、背景独立输入区域、半径范围及真实高斯渲染像素。
-用前景细线的边缘验证前景不模糊。截图只包含合成背景，不保存用户桌面；配置写入隔离目录，不操作用户设置或其他窗口。
-可额外指定 `-WallpaperSmokeTest` 验证壁纸图层读取接口：只在内存生成 8×8 壁纸区域，不截屏、不打印像素或保存图像。
+使用屏幕外的真实主窗口/设置窗口与注入的失败、高对比度读数，验证默认关闭、配置兼容、
+非分层 HWND、实时原生接口、圆角区域、主题更新、重新显示、关闭释放、前景无滤镜和 PNG/ICO 资源。
+旧半径控件不再提供可调强度；`Test-GaussianBlur.ps1` 仅保留为新测试的兼容入口。
 
-## 桌面壁纸图层（禁止截图）回归
-
-```powershell
-pwsh -NoProfile -File .\Tests\Test-DesktopWallpaper.ps1 -AppAssemblyDirectory .\bin\x64\Release\net10.0-windows
-```
-
-验证截屏方法已删除，桌面壁纸来源明确；用合成壁纸验证六种布局、负坐标与跨显示器区域、
-纯色/缺失壁纸回退、窗口移动和缩放后更新、空闲时不持续采样、隐藏/关闭时释放图层。
-可指定 `-LiveWallpaperSmokeTest` 验证只读 Windows 壁纸配置和内存中的小区域渲染；不修改系统壁纸、不截图，也不记录壁纸路径或图像内容。
+像素测试短暂显示两扇不激活的、完全覆盖采样区域的自有合成窗口：棋盘格验证软化，红/蓝变化验证背景无需文件或刷新即可实时更新。
+仅在内存测量被这些合成窗口覆盖的 120×120 区域，不保存桌面图片；生产程序无采样或截图代码。
+测试不启动/替换正在运行的托盘实例，不修改用户设置、系统壁纸或 Wallpaper Engine 配置。
+这是 DWM 合成机制验证，不替代不同驱动、多显示器、Wallpaper Engine 暂停策略下的人工检查。
 
 ## Web 网页预览与 MingCute 图标回归
 

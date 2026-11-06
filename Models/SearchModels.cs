@@ -90,6 +90,7 @@ public enum AppThemeMode
     Dark = 2
 }
 
+
 public sealed class SearchResultItem : INotifyPropertyChanged
 {
     private ImageSource? _smallIcon;

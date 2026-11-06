@@ -1,18 +1,38 @@
 # EverythingonStart
 
+<img src="Assets/AppIcon.png" width="96" alt="EverythingonStart 应用图标" />
+
 复刻 Windows 11 原生开始菜单搜索双栏体验的极速聚合搜索启动器。底层本地文件检索直连 Everything（支持 Everything 1.5 `Everything3.dll` 命名管道与 Everything 1.4/1.5 `Everything64.dll` IPC），同时聚合开始菜单应用、Windows 11 系统设置与实时 Web 联网搜索建议。
 
 ## 下载与快速开始
 
-从 [GitHub Releases](https://github.com/Hurt-In-Dream/EverythingonStart/releases/latest) 下载 Windows x64 压缩包。
-完整解压后运行 `EverythingonStart.exe`，不要只复制 EXE；自包含发行包无需额外安装 .NET 运行时。
+从 [v1.4.0 Release](https://github.com/Hurt-In-Dream/EverythingonStart/releases/tag/v1.4.0) 选择 Windows x64 版本：
+
+| 版本 | 下载 | 使用方式 |
+| --- | --- | --- |
+| 安装版 | [Setup-x64.exe](https://github.com/Hurt-In-Dream/EverythingonStart/releases/download/v1.4.0/EverythingonStart-v1.4.0-Setup-x64.exe) | 按用户安装，无需管理员权限，默认安装到 `%LOCALAPPDATA%\Programs\EverythingonStart` |
+| 绿色单文件版 | [Portable-x64.exe](https://github.com/Hurt-In-Dream/EverythingonStart/releases/download/v1.4.0/EverythingonStart-v1.4.0-Portable-x64.exe) | 下载一个 EXE 即可运行，无需旁置 DLL 或安装 .NET |
+
+单文件版内置 .NET 与 Everything SDK，首次运行会将原生运行库解压到 .NET 的用户临时缓存；设置仍保存在用户目录，不是零磁盘写入模式。
 推荐 Windows 11 x64。文件检索需要安装并在后台运行 [Everything](https://www.voidtools.com/downloads/)。
 首次启动后，按 `Win` 打开原生开始菜单并直接输入，或从系统托盘打开设置，切换为单按 `Win` 直接呼出。
 
-更新前请先从托盘退出旧实例，再解压并运行新版。设置保存在 `%LOCALAPPDATA%\EverythingonStart\settings.json`，不随程序文件删除。
+更新前请先从托盘退出旧实例，再安装或运行新版。设置保存在 `%LOCALAPPDATA%\EverythingonStart\settings.json`，卸载保留设置；安装器不自动更改开机启动项。
 发行包尚未进行代码签名；可使用同一 Release 的 `SHA256SUMS.txt` 校验下载文件。
 
 ---
+
+## 界面预览
+
+主搜索界面与 Web 结果卡片：
+
+![深色搜索界面与 Web 预览](docs/images/search-web.png)
+
+浅色设置中心、主题与原生背景模糊选项：
+
+![浅色设置中心](docs/images/settings-light.png)
+
+截图来自新版真实 WPF 界面，使用隔离配置与示例搜索结果，不含用户文件列表。此处展示 UI，不用静态截图证明动态壁纸效果。
 
 ## 核心特性
 
@@ -76,7 +96,7 @@ flowchart LR
 
 | 文件路径 | 功能职责 |
 | --- | --- |
-| [`App.xaml.cs`](App.xaml.cs) | 单实例互斥锁、系统托盘菜单、命令行参数处理（`--replace`、`--self-test`）与核心服务生命周期管理 |
+| [`App.xaml.cs`](App.xaml.cs) | 单实例互斥锁、系统托盘菜单、命令行诊断与核心服务生命周期管理 |
 | [`MainWindow.xaml`](MainWindow.xaml) / [`MainWindow.xaml.cs`](MainWindow.xaml.cs) | 双栏搜索主界面、分类胶囊切换、排序与扩展筛选下拉框、详情面板及悬停浮动动画 |
 | [`SettingsWindow.xaml`](SettingsWindow.xaml) / [`SettingsWindow.xaml.cs`](SettingsWindow.xaml.cs) | 四分页设置中心窗口（分类与文件类型、排序与搜索规则、交互与呼出行为、外观缩放与系统） |
 | [`Models/SearchModels.cs`](Models/SearchModels.cs) | 搜索分类、排序枚举、筛选模式、初始搜索项模式与列表条目数据模型 |
@@ -88,6 +108,8 @@ flowchart LR
 | [`Services/IconCacheService.cs`](Services/IconCacheService.cs) | 文件系统图标缓存与 `mingcute:settings-4-line` 矢量设置图标渲染 |
 | [`Services/ActionExecutorService.cs`](Services/ActionExecutorService.cs) | 文件打开、管理员运行、文件所有权获取、定位文件位置与跳转 Everything 窗口 |
 | [`Services/AppThemeService.cs`](Services/AppThemeService.cs) / [`Themes/ThemeResources.xaml`](Themes/ThemeResources.xaml) | 可选系统/浅色/深色主题、系统强调色与动态界面资源 |
+| [`Services/WindowBackdropService.cs`](Services/WindowBackdropService.cs) | 当前窗口的原生 DWM/Accent 背景合成、圆角裁剪、高对比度回退 |
+| [`Services/AppIconService.cs`](Services/AppIconService.cs) | 主窗口、设置中心、托盘的透明图标资源 |
 
 ---
 
@@ -101,17 +123,20 @@ flowchart LR
 强调色文字会调整明暗以保持可读性；文件与应用的原始图标保持不变。
 未勾选系统强调色时使用蓝色；旧配置与默认设置仍保持深色及蓝色，避免升级改变已有外观。
 
-### 可选背景高斯模糊
+### 原生背景模糊与 Wallpaper Engine
 
-在「外观与系统 → 背景高斯模糊」中勾选开关，并选择 **6–40** 的模糊强度（默认 **20**）。
-默认关闭，旧配置不会自动启用。点击「保存并应用」后生效。
-只对独立背景层应用高斯滤波，搜索文字、文件图标、按钮和设置项保持清晰。
-背景直接读取 **Windows/Explorer 当前桌面壁纸图层**（`IDesktopWallpaper`），而不是截屏或截取窗口。
-因此不包含原生开始菜单、其他应用界面或桌面图标，不会把开始菜单的收起画面留在模糊背景中。
-支持多显示器的独立壁纸及居中、平铺、拉伸、适应、填充、跨屏布局；移动或缩放窗口时更新对应壁纸区域。
-当前呈现系统配置的静态壁纸底图，第三方动态壁纸的实时动画不包含在此图层中。
-降低背景不透明度可增强效果，100% 时背景不可见。图层缓存在内存，隐藏或关闭窗口后清除，不上传、不录屏。
-高对比度模式或壁纸不可读取时使用原有背景，绝不退回屏幕截图；开关不改变 Alt+Tab、Win 键或任务栏层级操作。
+在「外观与系统 → 背景模糊（原生 DWM）」中启用，点击「保存并应用」生效；默认关闭，升级不强制改变已有配置。
+参考 [DWMBlurGlass](https://github.com/Maplespe/DWMBlurGlass) 的 Accent / DWMAPI 路径，仅对本程序两个窗口启用 **Accent Acrylic**，不可用时尝试 Windows 11 **SystemBackdrop**，不使用其全局注入和私有 DWM 钩子。
+
+- **实时合成**：DWM 使用当前窗口后方的实际合成内容，Wallpaper Engine 等第三方动态壁纸直接参与；不读取系统静态旧壁纸或项目 GIF/图片预览，不会缓存一张与实际壁纸不符的底图。
+- **不是“仅壁纸”滤镜**：后方若有其他窗口，系统可能将其一起合成；不截屏、不保存背景帧，也不会保留开始菜单收起后的旧截图。
+- **前景清晰**：文字、图标与交互控件不应用 WPF BlurEffect。原生模糊裁剪到卡片圆角，避免透明阴影边距出现矩形模糊。
+- **强度由系统管理**：模糊半径不能通过公开的系统接口自定义，旧 `GaussianBlurRadius` 字段仅保留配置兼容性。背景不透明度可调染色强度，100% 时背景被遮住。
+- **回退**：高对比度或系统接口不可用时使用原有主题背景；不会退回截图、壁纸文件或本地预览。
+
+推荐 Windows 11 22H2 及以上，并开启 Windows「透明效果」。原生效果仍受 Windows 版本、显卡驱动及系统策略影响。
+如 Wallpaper Engine 配置了「其他窗口最大化/全屏时暂停」或遮挡时暂停，壁纸动画会按其自身策略停止；请在 Wallpaper Engine 性能设置中按需选择继续播放。本程序不会改写第三方配置或强行唤醒壁纸进程。
+测试已验证原生合成对合成背景实时变化的响应，以及主窗口/设置窗口、主题、Win 输入和全屏切换回归；不声称覆盖所有第三方壁纸软件、显示器和驱动组合。
 
 点击主界面右下角「打开设置中心」、右上角 `...` 菜单或系统托盘菜单即可打开设置中心，包含 4 个配置页面：
 
@@ -172,10 +197,10 @@ dotnet build EverythingonStart.csproj -c Release -p:Platform=x64
 
 ### 构建发行包
 
-从已提交且工作区干净的源码构建自包含 Windows x64 压缩包、对应源码包与 SHA256 校验文件：
+从已提交且工作区干净的源码构建安装版、绿色单文件版、对应源码包与 SHA256 校验文件。需要可信的 Inno Setup 6/7 编译器：
 
 ```powershell
-pwsh -NoProfile -File .\Scripts\Publish-Release.ps1
+pwsh -NoProfile -File .\Scripts\Publish-Release.ps1 -InnoSetupCompiler 'C:\Program Files (x86)\Inno Setup 6\ISCC.exe'
 ```
 
 产物默认位于 `artifacts/`。打包脚本仅为本次构建指定官方 NuGet 源，不修改全局配置；
@@ -191,6 +216,12 @@ pwsh -NoProfile -File .\Scripts\Publish-Release.ps1
 
 # 运行内置自动化自检并输出诊断报告
 .\bin\x64\Release\net10.0-windows\EverythingonStart.exe --self-test
+
+# 单文件包诊断：不启动托盘、全局热键、设置服务或单实例接管
+.\EverythingonStart-v1.4.0-Portable-x64.exe --package-self-test
+
+# 输出单文件内嵌许可证
+.\EverythingonStart-v1.4.0-Portable-x64.exe --licenses
 ```
 
 ## 许可证与第三方组件

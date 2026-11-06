@@ -33,7 +33,7 @@ public partial class SettingsWindow : Window
         _themeService = AppThemeService.GetOrCreate(_settingsService);
         InitializeComponent();
         _themeService.RegisterWindow(this);
-        _backdropService = new WindowBackdropService(this, SettingsGaussianBackdrop, _settingsService);
+        _backdropService = new WindowBackdropService(this, SettingsRootBorder, _settingsService);
         LoadFromSettings();
 
         switch (initialTabIndex)
@@ -120,7 +120,7 @@ public partial class SettingsWindow : Window
         ChkEnableGaussianBlur.IsChecked = cur.EnableGaussianBlur;
         SldGaussianBlurRadius.Value = Math.Clamp(cur.GaussianBlurRadius, 6, 40);
         TxtGaussianBlurRadiusVal.Text = $"{(int)SldGaussianBlurRadius.Value}";
-        SldGaussianBlurRadius.IsEnabled = cur.EnableGaussianBlur;
+        SldGaussianBlurRadius.IsEnabled = false;
 
         ChkAutostart.IsChecked = _settingsService.IsAutostartEnabled();
         TxtInstanceName.Text = cur.EverythingInstanceName;
@@ -464,7 +464,7 @@ public partial class SettingsWindow : Window
     private void OnGaussianBlurOptionChanged(object sender, RoutedEventArgs e)
     {
         if (!_isLoading && SldGaussianBlurRadius != null)
-            SldGaussianBlurRadius.IsEnabled = ChkEnableGaussianBlur.IsChecked == true;
+            SldGaussianBlurRadius.IsEnabled = false;
     }
 
     private void OnTitleBarMouseLeftButtonDown(object sender, MouseButtonEventArgs e)

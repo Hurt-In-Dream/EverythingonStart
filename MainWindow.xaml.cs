@@ -104,7 +104,7 @@ public partial class MainWindow : Window
         _themeService = AppThemeService.GetOrCreate(_settingsService);
         InitializeComponent();
         _themeService.RegisterWindow(this);
-        _backdropService = new WindowBackdropService(this, MainGaussianBackdrop, _settingsService);
+        _backdropService = new WindowBackdropService(this, RootCardBorder, _settingsService, WindowShadowBorder);
         _themeService.ThemeChanged += OnAppThemeChanged;
         Closed += (_, _) => _themeService.ThemeChanged -= OnAppThemeChanged;
         ResultsListBox.ItemsSource = _entries;
