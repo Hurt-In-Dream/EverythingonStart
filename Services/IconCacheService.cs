@@ -11,6 +11,12 @@ namespace EverythingonStart.Services;
 
 public sealed class IconCacheService
 {
+    public const string MingCuteSettings4LinePathData =
+        "F0 M13.414,2.1 A2,2 0 0 0 10.586,2.1 L8.686,4 H6 A2,2 0 0 0 4,6 V8.686 L2.1,10.586 A2,2 0 0 0 2.1,13.414 L4,15.314 V18 A2,2 0 0 0 6,20 H8.686 L10.586,21.9 A2,2 0 0 0 13.414,21.9 L15.314,20 H18 A2,2 0 0 0 20,18 V15.314 L21.9,13.414 A2,2 0 0 0 21.9,10.586 L20,8.686 V6 A2,2 0 0 0 18,4 H15.314 L13.414,2.1 Z "
+        + "M12,3.515 L14.182,5.697 A1,1 0 0 0 14.889,5.99 H18 V9.111 A1,1 0 0 0 18.293,9.818 L20.485,12 L18.293,14.182 A1,1 0 0 0 18,14.889 V18 H14.889 A1,1 0 0 0 14.182,18.293 L12,20.485 L9.818,18.293 A1,1 0 0 0 9.111,18 H6 V14.889 A1,1 0 0 0 5.707,14.182 L3.515,12 L5.707,9.818 A1,1 0 0 0 6,9.111 V6 H9.111 A1,1 0 0 0 9.818,5.697 L12,3.515 Z "
+        + "M12,8.5 A3.5,3.5 0 1 0 12,15.5 A3.5,3.5 0 1 0 12,8.5 Z "
+        + "M12,10.5 A1.5,1.5 0 1 1 12,13.5 A1.5,1.5 0 1 1 12,10.5 Z";
+
     private const uint SHGFI_ICON = 0x000000100;
     private const uint SHGFI_LARGEICON = 0x000000000;
     private const uint SHGFI_SMALLICON = 0x000000001;
@@ -207,17 +213,20 @@ public sealed class IconCacheService
     private static DrawingImage CreateVectorGearBadgeIcon(Color accentColor)
     {
         var group = new DrawingGroup();
-        var bgBrush = new SolidColorBrush(Color.FromArgb(40, accentColor.R, accentColor.G, accentColor.B));
-        var pen = new Pen(new SolidColorBrush(accentColor), 2.0)
-        {
-            StartLineCap = PenLineCap.Round,
-            EndLineCap = PenLineCap.Round
-        };
+        var bgBrush = new SolidColorBrush(Color.FromArgb(36, accentColor.R, accentColor.G, accentColor.B));
+        bgBrush.Freeze();
+        var fgBrush = new SolidColorBrush(accentColor);
+        fgBrush.Freeze();
 
-        group.Children.Add(new GeometryDrawing(bgBrush, null, new EllipseGeometry(new Point(16, 16), 15, 15)));
-        group.Children.Add(new GeometryDrawing(null, pen, new EllipseGeometry(new Point(16, 16), 6.5, 6.5)));
-        group.Children.Add(new GeometryDrawing(new SolidColorBrush(accentColor), null, new EllipseGeometry(new Point(16, 16), 2.2, 2.2)));
+        // 24x24 坐标系：外层柔和圆角底衬 + mingcute:settings-4-line 矢量图标
+        group.Children.Add(new GeometryDrawing(bgBrush, null, new EllipseGeometry(new Point(12, 12), 11.5, 11.5)));
 
+        var iconGeometry = Geometry.Parse(MingCuteSettings4LinePathData).Clone();
+        iconGeometry.Transform = new ScaleTransform(0.76, 0.76, 12.0, 12.0);
+        iconGeometry.Freeze();
+        group.Children.Add(new GeometryDrawing(fgBrush, null, iconGeometry));
+
+        group.Freeze();
         var image = new DrawingImage(group);
         image.Freeze();
         return image;

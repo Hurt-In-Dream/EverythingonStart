@@ -19,6 +19,7 @@
 
     <Window.Resources>
         <BooleanToVisibilityConverter x:Key="BoolToVis" />
+        <Geometry x:Key="MingCuteSettings4LineGeometry">F0 M13.414,2.1 A2,2 0 0 0 10.586,2.1 L8.686,4 H6 A2,2 0 0 0 4,6 V8.686 L2.1,10.586 A2,2 0 0 0 2.1,13.414 L4,15.314 V18 A2,2 0 0 0 6,20 H8.686 L10.586,21.9 A2,2 0 0 0 13.414,21.9 L15.314,20 H18 A2,2 0 0 0 20,18 V15.314 L21.9,13.414 A2,2 0 0 0 21.9,10.586 L20,8.686 V6 A2,2 0 0 0 18,4 H15.314 L13.414,2.1 Z M12,3.515 L14.182,5.697 A1,1 0 0 0 14.889,5.99 H18 V9.111 A1,1 0 0 0 18.293,9.818 L20.485,12 L18.293,14.182 A1,1 0 0 0 18,14.889 V18 H14.889 A1,1 0 0 0 14.182,18.293 L12,20.485 L9.818,18.293 A1,1 0 0 0 9.111,18 H6 V14.889 A1,1 0 0 0 5.707,14.182 L3.515,12 L5.707,9.818 A1,1 0 0 0 6,9.111 V6 H9.111 A1,1 0 0 0 9.818,5.697 L12,3.515 Z M12,8.5 A3.5,3.5 0 1 0 12,15.5 A3.5,3.5 0 1 0 12,8.5 Z M12,10.5 A1.5,1.5 0 1 1 12,13.5 A1.5,1.5 0 1 1 12,10.5 Z</Geometry>
 
         <!-- 现代深色滚动条样式 -->
         <Style TargetType="ScrollBar">
@@ -470,23 +471,39 @@
         </Style>
     </Window.Resources>
 
-    <!-- 外层玻璃主容器 -->
-    <Border x:Name="RootCardBorder"
-            Margin="10"
-            CornerRadius="12"
-            Background="#F21F2023"
-            BorderBrush="#2EFFFFFF"
-            BorderThickness="1"
-            RenderTransformOrigin="0.5,1.0">
-        <Border.RenderTransform>
+    <!-- 根容器：将静态阴影层与动态内容层分离，避免子控件悬停/打字触发整窗高斯阴影重绘 -->
+    <Grid x:Name="PopupRootContainer" RenderTransformOrigin="0.5,1.0">
+        <Grid.RenderTransform>
             <TransformGroup>
                 <ScaleTransform x:Name="PopupScaleTransform" ScaleX="1" ScaleY="1" />
                 <TranslateTransform x:Name="PopupSlideTransform" X="0" Y="0" />
             </TransformGroup>
-        </Border.RenderTransform>
-        <Border.Effect>
-            <DropShadowEffect BlurRadius="24" ShadowDepth="6" Opacity="0.55" Color="#000000" />
-        </Border.Effect>
+        </Grid.RenderTransform>
+
+        <!-- 静态缓存阴影层（仅在尺寸改变时光栅化一次） -->
+        <Border Margin="10"
+                CornerRadius="12"
+                Background="#FF1F2023"
+                IsHitTestVisible="False">
+            <Border.CacheMode>
+                <BitmapCache RenderAtScale="1" SnapsToDevicePixels="True" />
+            </Border.CacheMode>
+            <Border.Effect>
+                <DropShadowEffect BlurRadius="18"
+                                  ShadowDepth="4"
+                                  Opacity="0.48"
+                                  Color="#000000"
+                                  RenderingBias="Performance" />
+            </Border.Effect>
+        </Border>
+
+        <!-- 外层玻璃主容器（无 Effect，所有子元素交互直接硬件加速渲染） -->
+        <Border x:Name="RootCardBorder"
+                Margin="10"
+                CornerRadius="12"
+                Background="#F21F2023"
+                BorderBrush="#2EFFFFFF"
+                BorderThickness="1">
 
         <Grid x:Name="RootContentGrid" Margin="22,17,22,18">
             <Grid.LayoutTransform>
@@ -572,12 +589,13 @@
                     <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
 
-                <!-- 返回全部按钮 -->
-                <Button Grid.Column="0"
+                <!-- 返回全部 / 关闭窗口按钮 -->
+                <Button x:Name="BackOrCloseButton"
+                        Grid.Column="0"
                         Style="{StaticResource IconButtonStyle}"
-                        Margin="0,0,8,0"
+                        Margin="0,0,6,0"
                         Click="OnBackToAllCategoryClick"
-                        ToolTip="返回全部分类">
+                        ToolTip="在其他分类页返回“全部”，在“全部”页直接关闭搜索窗口">
                     <Path Width="13"
                           Height="13"
                           Stretch="Uniform"
@@ -588,38 +606,90 @@
 
                 <!-- 分类胶囊列表 -->
                 <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
-                    <RadioButton x:Name="TabAll" Content="全部" IsChecked="True" Style="{StaticResource CategoryPillStyle}" Tag="{x:Static models:SearchCategory.All}" Checked="OnCategoryTabChecked" />
-                    <RadioButton x:Name="TabApps" Content="应用" Style="{StaticResource CategoryPillStyle}" Tag="{x:Static models:SearchCategory.Apps}" Checked="OnCategoryTabChecked" />
-                    <RadioButton x:Name="TabDocs" Content="文档" Style="{StaticResource CategoryPillStyle}" Tag="{x:Static models:SearchCategory.Documents}" Checked="OnCategoryTabChecked" />
-                    <RadioButton x:Name="TabWeb" Content="Web" Style="{StaticResource CategoryPillStyle}" Tag="{x:Static models:SearchCategory.Web}" Checked="OnCategoryTabChecked" />
-                    <RadioButton x:Name="TabSettings" Content="设置" Style="{StaticResource CategoryPillStyle}" Tag="{x:Static models:SearchCategory.Settings}" Checked="OnCategoryTabChecked" />
-                    <RadioButton x:Name="TabFolders" Content="文件夹" Style="{StaticResource CategoryPillStyle}" Tag="{x:Static models:SearchCategory.Folders}" Checked="OnCategoryTabChecked" />
-                    <RadioButton x:Name="TabPhotos" Content="照片" Style="{StaticResource CategoryPillStyle}" Tag="{x:Static models:SearchCategory.Photos}" Checked="OnCategoryTabChecked" />
+                    <RadioButton x:Name="TabAll" Content="全部" Padding="11,5" Margin="0,0,5,0" IsChecked="True" Style="{StaticResource CategoryPillStyle}" Tag="{x:Static models:SearchCategory.All}" Checked="OnCategoryTabChecked" />
+                    <RadioButton x:Name="TabApps" Content="应用" Padding="11,5" Margin="0,0,5,0" Style="{StaticResource CategoryPillStyle}" Tag="{x:Static models:SearchCategory.Apps}" Checked="OnCategoryTabChecked" />
+                    <RadioButton x:Name="TabDocs" Content="文档" Padding="11,5" Margin="0,0,5,0" Style="{StaticResource CategoryPillStyle}" Tag="{x:Static models:SearchCategory.Documents}" Checked="OnCategoryTabChecked" />
+                    <RadioButton x:Name="TabWeb" Content="Web" Padding="11,5" Margin="0,0,5,0" Style="{StaticResource CategoryPillStyle}" Tag="{x:Static models:SearchCategory.Web}" Checked="OnCategoryTabChecked" />
+                    <RadioButton x:Name="TabSettings" Content="设置" Padding="11,5" Margin="0,0,5,0" Style="{StaticResource CategoryPillStyle}" Tag="{x:Static models:SearchCategory.Settings}" Checked="OnCategoryTabChecked" />
+                    <RadioButton x:Name="TabFolders" Content="文件夹" Padding="11,5" Margin="0,0,5,0" Style="{StaticResource CategoryPillStyle}" Tag="{x:Static models:SearchCategory.Folders}" Checked="OnCategoryTabChecked" />
+                    <RadioButton x:Name="TabPhotos" Content="照片" Padding="11,5" Margin="0,0,5,0" Style="{StaticResource CategoryPillStyle}" Tag="{x:Static models:SearchCategory.Photos}" Checked="OnCategoryTabChecked" />
                     <Button x:Name="BtnMoreEverything"
                             Content="更多"
+                            Padding="11,5"
+                            Margin="0,0,4,0"
                             Style="{StaticResource CategoryActionPillButtonStyle}"
                             Click="OnOpenInEverythingClick"
                             ToolTip="跳转到 Everything 主窗口 (Shift+Enter)" />
                 </StackPanel>
 
-                <!-- 右侧状态与选项菜单 -->
+                <!-- 右侧：排序方式、筛选选项、设置中心与更多菜单 -->
                 <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
-                    <Border Background="#18FFFFFF"
-                            CornerRadius="10"
-                            Padding="8,3"
-                            Margin="0,0,6,0"
-                            VerticalAlignment="Center"
-                            ToolTip="当前 Everything 搜索引擎状态">
-                        <TextBlock x:Name="EngineStatusBadge"
-                                   Text="Everything 实时"
-                                   FontSize="11"
-                                   Foreground="#98A2B3" />
-                    </Border>
+                    <TextBlock x:Name="EngineStatusBadge" Visibility="Collapsed" />
 
+                    <!-- 排序方式按钮 -->
+                    <Button x:Name="SortSelectorButton"
+                            Style="{StaticResource CategoryActionPillButtonStyle}"
+                            Padding="10,4"
+                            Margin="0,0,5,0"
+                            Click="OnSortSelectorButtonClick"
+                            ToolTip="切换 Everything 搜索结果排序方式">
+                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                            <Path Width="11"
+                                  Height="11"
+                                  Stretch="Uniform"
+                                  Stroke="#58B6EA"
+                                  StrokeThickness="1.5"
+                                  Margin="0,0,5,0"
+                                  VerticalAlignment="Center"
+                                  Data="M 3,1 L 3,11 M 1,8.5 L 3,11 L 5,8.5 M 9,11 L 9,1 M 7,3.5 L 9,1 L 11,3.5" />
+                            <TextBlock x:Name="SortButtonLabel"
+                                       Text="排序: 智能"
+                                       FontSize="11.5"
+                                       VerticalAlignment="Center" />
+                        </StackPanel>
+                    </Button>
+
+                    <!-- 筛选选项按钮 -->
+                    <Button x:Name="FilterSelectorButton"
+                            Style="{StaticResource CategoryActionPillButtonStyle}"
+                            Padding="10,4"
+                            Margin="0,0,5,0"
+                            Click="OnFilterSelectorButtonClick"
+                            ToolTip="切换文件类型筛选器模式、附加文件类型与匹配开关">
+                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                            <Path Width="11"
+                                  Height="11"
+                                  Stretch="Uniform"
+                                  Stroke="#58B6EA"
+                                  StrokeThickness="1.5"
+                                  Margin="0,0,5,0"
+                                  VerticalAlignment="Center"
+                                  Data="M 1,1.5 L 11,1.5 L 7,6 L 7,10.5 L 5,9.5 L 5,6 Z" />
+                            <TextBlock x:Name="FilterButtonLabel"
+                                       Text="筛选: 默认"
+                                       FontSize="11.5"
+                                       VerticalAlignment="Center" />
+                        </StackPanel>
+                    </Button>
+
+                    <!-- 设置中心按钮 (mingcute:settings-4-line) -->
+                    <Button x:Name="SettingsWindowButton"
+                            Style="{StaticResource IconButtonStyle}"
+                            Margin="0,0,2,0"
+                            Click="OnSettingsWindowButtonClick"
+                            ToolTip="打开设置中心（自定义各子选项文件类型、排序与外观）">
+                        <Path Width="15"
+                              Height="15"
+                              Stretch="Uniform"
+                              Fill="#D6D9E0"
+                              Data="{StaticResource MingCuteSettings4LineGeometry}" />
+                    </Button>
+
+                    <!-- 快捷选项菜单 -->
                     <Button x:Name="OptionsMenuButton"
                             Style="{StaticResource IconButtonStyle}"
                             Click="OnOptionsMenuButtonClick"
-                            ToolTip="Win 键呼出模式与搜索选项">
+                            ToolTip="快捷选项菜单">
                         <Path Width="15"
                               Height="4"
                               Stretch="Uniform"
@@ -1336,5 +1406,6 @@
                 </Border>
             </Grid>
         </Grid>
-    </Border>
+        </Border>
+    </Grid>
 </Window>

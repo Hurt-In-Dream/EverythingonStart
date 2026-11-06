@@ -35,6 +35,9 @@ public sealed class WinKeyHookService : IDisposable
     private IntPtr _hookHandle;
     private IntPtr _mainWindowHwnd;
     private IntPtr _lastNormalFgHwnd;
+    private IntPtr _lastAppBeforeWinKeyHwnd;
+    private IntPtr _cachedInspectedFgHwnd;
+    private bool _cachedInspectedFgIsStartMenu;
 
     private bool _winKeyDown;
     private bool _otherKeyPressedWhileWinDown;
@@ -52,6 +55,8 @@ public sealed class WinKeyHookService : IDisposable
         _inputHandoverPending = false;
         _handoverWindowUntilTick = 0;
     }
+
+    public IntPtr LastAppBeforeWinKeyHwnd => _lastAppBeforeWinKeyHwnd;
 
     public event Action? SingleWinKeyTapped;
     public event Action<string>? StartMenuTypingIntercepted;
@@ -128,6 +133,11 @@ public sealed class WinKeyHookService : IDisposable
                         {
                             _winKeyDown = true;
                             _otherKeyPressedWhileWinDown = false;
+                            var currentFg = GetForegroundWindow();
+                            if (currentFg != IntPtr.Zero && currentFg != _mainWindowHwnd && !IsStartMenuHostWindowZeroAlloc(currentFg))
+                            {
+                                _lastAppBeforeWinKeyHwnd = currentFg;
+                            }
                         }
                     }
                     else if (isKeyUp)
@@ -146,10 +156,10 @@ public sealed class WinKeyHookService : IDisposable
 
                             // 默认模式：放行 Win 键让系统正常弹出带磁贴的开始菜单及全屏下的任务栏
                             _lastNormalFgHwnd = IntPtr.Zero;
-                            bool wasAlreadyOpen = IsNativeStartMenuOpen();
+                            bool wasAlreadyOpen = IsStartMenuHostWindowCached(GetForegroundWindow());
                             _startMenuSessionArmed = !wasAlreadyOpen;
                             _lastSingleWinReleaseTick = Environment.TickCount64;
-                            if (_startMenuSessionArmed)
+                            if (_startMenuSessionArmed && !_boundsService.HasValidCacheForCurrentScreen())
                             {
                                 ScheduleStartMenuBoundsProbe();
                             }
@@ -185,12 +195,6 @@ public sealed class WinKeyHookService : IDisposable
                             // 有界保护：窗口无法激活时不能无限接管其他应用的输入。
                             _handoverWindowUntilTick = now + 1500;
                             _interceptedKeyUps.Add(vk);
-
-                            var cur = _settingsService.Current;
-                            if (cur.CachedStartMenuCardWidthDip <= 0 || cur.CachedStartMenuCardHeightDip <= 0)
-                            {
-                                _boundsService.TryCaptureOpenStartMenuBounds(GetForegroundWindow());
-                            }
 
                             // 保持当前前台为 StartMenuExperienceHost 时发送 Esc，使其立即收到按键并隐藏开始菜单
                             DismissNativeStartMenu();
@@ -261,10 +265,24 @@ public sealed class WinKeyHookService : IDisposable
 
     private bool IsNativeStartMenuOpen(IntPtr fg)
     {
-        if (_appVisibility != null && _appVisibility.IsLauncherVisible(out bool launcherVisible) == 0 && launcherVisible)
+        if (IsStartMenuHostWindowCached(fg))
             return true;
 
-        return IsStartMenuHostWindowZeroAlloc(fg);
+        return false;
+    }
+
+    private bool IsStartMenuHostWindowCached(IntPtr fg)
+    {
+        if (fg == IntPtr.Zero)
+            return false;
+
+        if (fg == _cachedInspectedFgHwnd)
+            return _cachedInspectedFgIsStartMenu;
+
+        bool result = IsStartMenuHostWindowZeroAlloc(fg);
+        _cachedInspectedFgHwnd = fg;
+        _cachedInspectedFgIsStartMenu = result;
+        return result;
     }
 
     private static unsafe bool IsStartMenuHostWindowZeroAlloc(IntPtr fg)

@@ -27,12 +27,27 @@ public sealed class StartMenuBoundsService
 
     private readonly AppSettingsService _settingsService;
     private readonly object _syncLock = new();
+    private double _cachedScreenW;
+    private double _cachedScreenH;
+    private double _cachedTaskbarHeightDip = 48.0;
+    private bool? _cachedTaskbarCentered;
 
     public string LastPlacementSource { get; private set; } = "自适应推导";
 
     public StartMenuBoundsService(AppSettingsService settingsService)
     {
         _settingsService = settingsService;
+    }
+
+    public bool HasValidCacheForCurrentScreen()
+    {
+        double screenWidthDip = SystemParameters.PrimaryScreenWidth;
+        double screenHeightDip = SystemParameters.PrimaryScreenHeight;
+        var cur = _settingsService.Current;
+        return cur.CachedStartMenuCardWidthDip is >= 480.0 and <= 1200.0
+               && cur.CachedStartMenuCardHeightDip is >= 480.0 and <= 1200.0
+               && Math.Abs(cur.CachedScreenWidthDip - screenWidthDip) < 2.0
+               && Math.Abs(cur.CachedScreenHeightDip - screenHeightDip) < 2.0;
     }
 
     public bool TryCaptureOpenStartMenuBounds(IntPtr candidateForegroundHwnd = default)
@@ -226,9 +241,16 @@ public sealed class StartMenuBoundsService
         double screenWidthDip = SystemParameters.PrimaryScreenWidth;
         double screenHeightDip = SystemParameters.PrimaryScreenHeight;
         var workAreaDip = SystemParameters.WorkArea;
-        double taskbarHeightDip = GetTaskbarHeightDip(out _);
 
-        return CalculatePlacementForDisplay(screenWidthDip, screenHeightDip, workAreaDip, taskbarHeightDip);
+        if (Math.Abs(_cachedScreenW - screenWidthDip) > 1.0 || Math.Abs(_cachedScreenH - screenHeightDip) > 1.0)
+        {
+            _cachedScreenW = screenWidthDip;
+            _cachedScreenH = screenHeightDip;
+            _cachedTaskbarHeightDip = GetTaskbarHeightDip(out _);
+            _cachedTaskbarCentered = null;
+        }
+
+        return CalculatePlacementForDisplay(screenWidthDip, screenHeightDip, workAreaDip, _cachedTaskbarHeightDip);
     }
 
     public StartMenuPlacement CalculatePlacementForDisplay(
@@ -252,7 +274,15 @@ public sealed class StartMenuBoundsService
                              && Math.Abs(cur.CachedScreenWidthDip - screenWidthDip) < 2.0
                              && Math.Abs(cur.CachedScreenHeightDip - screenHeightDip) < 2.0;
 
-        if (hasValidCache)
+        if (!cur.AutoScaleToStartMenu)
+        {
+            double manualScale = Math.Clamp(cur.ManualUiScale, 0.70, 1.35);
+            cardWidthDip = Math.Round(ReferenceCardWidthDip * manualScale);
+            cardHeightDip = Math.Round(ReferenceCardHeightDip * manualScale);
+            bottomGapDip = 10.0;
+            source = $"手动缩放 ({manualScale * 100:F0}%, {cardWidthDip:F0}×{cardHeightDip:F0})";
+        }
+        else if (hasValidCache)
         {
             cardWidthDip = cur.CachedStartMenuCardWidthDip;
             cardHeightDip = cur.CachedStartMenuCardHeightDip;
@@ -342,11 +372,16 @@ public sealed class StartMenuBoundsService
         return taskbarHeightDip;
     }
 
-    private static bool IsTaskbarCentered()
+    private bool IsTaskbarCentered()
     {
+        if (_cachedTaskbarCentered.HasValue)
+            return _cachedTaskbarCentered.Value;
+
         using var key = Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced");
         var val = key?.GetValue("TaskbarAl");
-        return val is int intVal ? intVal != 0 : true;
+        bool centered = val is int intVal ? intVal != 0 : true;
+        _cachedTaskbarCentered = centered;
+        return centered;
     }
 
     [StructLayout(LayoutKind.Sequential)]

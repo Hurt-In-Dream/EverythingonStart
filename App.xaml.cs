@@ -97,11 +97,11 @@ public partial class App : System.Windows.Application
     private void InitializeCoreServices()
     {
         _settingsService = new AppSettingsService();
-        _everythingService = new EverythingSearchService(_settingsService.Current.EverythingInstanceName);
+        _everythingService = new EverythingSearchService(_settingsService.Current.EverythingInstanceName, _settingsService);
         _startMenuService = new StartMenuIndexService();
         _webSuggestionService = new WebSuggestionService(_settingsService);
         _iconCacheService = new IconCacheService();
-        _actionExecutor = new ActionExecutorService(_everythingService);
+        _actionExecutor = new ActionExecutorService(_everythingService, _settingsService);
         _boundsService = new StartMenuBoundsService(_settingsService);
 
         _mainWindow = new MainWindow(
@@ -154,10 +154,13 @@ public partial class App : System.Windows.Application
     {
         var menu = new Forms.ContextMenuStrip();
         menu.Items.Add("打开搜索面板 (Win)", null, (_, _) => Dispatcher.BeginInvoke(() => _mainWindow?.ShowPopup(null)));
+        menu.Items.Add("打开设置中心 (自定义文件类型与筛选器)...", null, (_, _) => Dispatcher.BeginInvoke(() => _mainWindow?.OpenSettingsDialog(0)));
         menu.Items.Add(new Forms.ToolStripSeparator());
 
         var directModeItem = new Forms.ToolStripMenuItem("单按 Win 键直接呼出搜索面板");
         var typeModeItem = new Forms.ToolStripMenuItem("按 Win 键打开开始菜单后打字接管");
+        var initialAllItem = new Forms.ToolStripMenuItem("打开主界面后搜索项：默认“全部”");
+        var initialLastItem = new Forms.ToolStripMenuItem("打开主界面后搜索项：上次退出时最后搜索项");
 
         void SyncModeChecks()
         {
@@ -165,6 +168,8 @@ public partial class App : System.Windows.Application
                 return;
             directModeItem.Checked = _settingsService.Current.TriggerMode == WinKeyTriggerMode.DirectOnSingleWinTap;
             typeModeItem.Checked = _settingsService.Current.TriggerMode == WinKeyTriggerMode.InterceptTypingInStartMenu;
+            initialAllItem.Checked = _settingsService.Current.InitialSearchItem == InitialSearchItemMode.DefaultAll;
+            initialLastItem.Checked = _settingsService.Current.InitialSearchItem == InitialSearchItemMode.LastSelectedOnExit;
         }
 
         directModeItem.Click += (_, _) =>
@@ -185,11 +190,38 @@ public partial class App : System.Windows.Application
             SyncModeChecks();
         };
 
+        initialAllItem.Click += (_, _) =>
+        {
+            if (_settingsService == null)
+                return;
+            _settingsService.Current.InitialSearchItem = InitialSearchItemMode.DefaultAll;
+            _settingsService.Save();
+            SyncModeChecks();
+        };
+
+        initialLastItem.Click += (_, _) =>
+        {
+            if (_settingsService == null)
+                return;
+            _settingsService.Current.InitialSearchItem = InitialSearchItemMode.LastSelectedOnExit;
+            if (_mainWindow != null)
+                _settingsService.Current.LastSearchCategory = _mainWindow.CurrentCategory;
+            _settingsService.Save();
+            SyncModeChecks();
+        };
+
         menu.Opening += (_, _) => SyncModeChecks();
         menu.Items.Add(directModeItem);
         menu.Items.Add(typeModeItem);
         menu.Items.Add(new Forms.ToolStripSeparator());
-        menu.Items.Add("退出 EverythingonStart", null, (_, _) => Shutdown());
+        menu.Items.Add(initialAllItem);
+        menu.Items.Add(initialLastItem);
+        menu.Items.Add(new Forms.ToolStripSeparator());
+        menu.Items.Add("退出 EverythingonStart", null, (_, _) =>
+        {
+            _mainWindow?.SaveLastSearchCategory();
+            Shutdown();
+        });
 
         _trayIcon = new Forms.NotifyIcon
         {
@@ -242,12 +274,12 @@ public partial class App : System.Windows.Application
         using var stdout = new System.IO.StreamWriter(Console.OpenStandardOutput()) { AutoFlush = true };
         var sw = Stopwatch.StartNew();
         var settings = new AppSettingsService();
-        using var everything = new EverythingSearchService(settings.Current.EverythingInstanceName);
+        using var everything = new EverythingSearchService(settings.Current.EverythingInstanceName, settings);
         var startMenu = new StartMenuIndexService();
         startMenu.RebuildAppIndex();
         var webService = new WebSuggestionService(settings);
         var iconService = new IconCacheService();
-        var actionExecutor = new ActionExecutorService(everything);
+        var actionExecutor = new ActionExecutorService(everything, settings);
         var boundsService = new StartMenuBoundsService(settings);
 
         var window = new MainWindow(settings, everything, startMenu, webService, iconService, actionExecutor, boundsService);
@@ -271,6 +303,81 @@ public partial class App : System.Windows.Application
             }
         }
 
+        // 测试筛选模式（默认 / 跟随 Everything / 自定义）与附加筛选
+        var origUsePerCat = settings.Current.UsePerCategoryFilterMode;
+        var origDocsMode = settings.Current.DocumentsFilterMode;
+        var origDocsCustom = settings.Current.CustomDocumentsFilter;
+        var origExtraFilter = settings.Current.ActiveExtraFilter;
+        var origSort = settings.Current.SortOrder;
+
+        settings.Current.UsePerCategoryFilterMode = true;
+        settings.Current.DocumentsFilterMode = FilterConfigMode.Default;
+        string defaultDocQueryText = everything.BuildCategoryQuery("report", SearchCategory.Documents);
+
+        settings.Current.DocumentsFilterMode = FilterConfigMode.FollowEverything;
+        string followDocQueryText = everything.BuildCategoryQuery("report", SearchCategory.Documents);
+
+        settings.Current.DocumentsFilterMode = FilterConfigMode.Custom;
+        settings.Current.CustomDocumentsFilter = "md;pdf;docx";
+        string customDocQueryText = everything.BuildCategoryQuery("report", SearchCategory.Documents);
+
+        settings.Current.ActiveExtraFilter = ExtraTypeFilter.Compressed;
+        string extraFilterQueryText = everything.BuildCategoryQuery("archive", SearchCategory.All);
+        settings.Current.ActiveExtraFilter = origExtraFilter;
+
+        settings.Current.SortOrder = EverythingSortOrder.FollowEverything;
+        var effectiveFollowSort = everything.GetEffectiveSortOrder();
+
+        settings.Current.UsePerCategoryFilterMode = origUsePerCat;
+        settings.Current.DocumentsFilterMode = origDocsMode;
+        settings.Current.CustomDocumentsFilter = origDocsCustom;
+        settings.Current.SortOrder = origSort;
+
+        // 测试打开主界面后初始搜索项：默认“全部” vs 上次退出时最后搜索项
+        var origInitialMode = settings.Current.InitialSearchItem;
+        var origLastCat = settings.Current.LastSearchCategory;
+
+        window.SelectCategoryTab(SearchCategory.Documents);
+        window.SaveLastSearchCategory();
+
+        settings.Current.InitialSearchItem = InitialSearchItemMode.DefaultAll;
+        window.ApplyInitialSearchItemOnOpen();
+        var defaultAllCategoryOnOpen = window.CurrentCategory;
+
+        settings.Current.InitialSearchItem = InitialSearchItemMode.LastSelectedOnExit;
+        window.ApplyInitialSearchItemOnOpen();
+        var restoredCategoryOnOpen = window.CurrentCategory;
+
+        settings.Current.InitialSearchItem = origInitialMode;
+        settings.Current.LastSearchCategory = origLastCat;
+        window.ApplyInitialSearchItemOnOpen();
+        settings.Save();
+
+        // 测试左上角返回键在“全部”页关闭搜索窗口、在子分类页返回“全部”页
+        window.TabPhotos.IsChecked = true;
+        bool closedFromPhotos = window.ExecuteBackOrCloseAction();
+        bool returnedToAll = window.TabAll.IsChecked == true;
+        bool closedFromAll = window.ExecuteBackOrCloseAction();
+
+        // 测试模拟全屏窗口场景下任务栏 Z-Order 置于全屏窗口上方
+        var dummyFullscreen = new Window
+        {
+            WindowStyle = WindowStyle.None,
+            ResizeMode = ResizeMode.NoResize,
+            ShowInTaskbar = false,
+            Left = 0,
+            Top = 0,
+            Width = SystemParameters.PrimaryScreenWidth,
+            Height = SystemParameters.PrimaryScreenHeight,
+            Topmost = true,
+            Opacity = 0.01
+        };
+        dummyFullscreen.Show();
+        IntPtr dummyHwnd = new System.Windows.Interop.WindowInteropHelper(dummyFullscreen).Handle;
+        window.RevealAndRaiseTaskbar(dummyHwnd);
+        bool taskbarAboveFullscreen = EverythingonStart.MainWindow.IsTaskbarAboveWindowInZOrder(dummyHwnd, out string zOrderDiag);
+        dummyFullscreen.Close();
+
         var querySw = Stopwatch.StartNew();
         var docQuery = everything.Query("rar", SearchCategory.Documents, 10);
         var folderQuery = everything.Query("Windows", SearchCategory.Folders, 5);
@@ -292,12 +399,21 @@ public partial class App : System.Windows.Application
         sw.Stop();
         stdout.WriteLine($"[SelfTest] Engine: {everything.ActiveEngineDescription}");
         stdout.WriteLine($"[SelfTest] EverythingExePath: {actionExecutor.ResolveEverythingExecutablePath() ?? "Not Found"}");
+        stdout.WriteLine($"[SelfTest] EverythingConfigSummary: {everything.DetectedConfigSummary}");
+        stdout.WriteLine($"[SelfTest] FilterQuery(Default): {defaultDocQueryText}");
+        stdout.WriteLine($"[SelfTest] FilterQuery(FollowEverything): {followDocQueryText}");
+        stdout.WriteLine($"[SelfTest] FilterQuery(Custom='md;pdf;docx'): {customDocQueryText}");
+        stdout.WriteLine($"[SelfTest] ExtraFilter(Compressed): {extraFilterQueryText}");
+        stdout.WriteLine($"[SelfTest] EffectiveSort(FollowEverything): {effectiveFollowSort}");
+        stdout.WriteLine($"[SelfTest] InitialSearchItem: DefaultAll->{defaultAllCategoryOnOpen}, LastSelectedOnExit->{restoredCategoryOnOpen}");
+        stdout.WriteLine($"[SelfTest] BackButton: FromPhotosClosed={closedFromPhotos}, ReturnedToAll={returnedToAll}, FromAllClosed={closedFromAll}");
+        stdout.WriteLine($"[SelfTest] FullscreenTaskbarZOrder: TaskbarAboveFullscreen={taskbarAboveFullscreen} ({zOrderDiag})");
         stdout.WriteLine($"[SelfTest] Everything Connected: {everything.IsConnected}");
         stdout.WriteLine($"[SelfTest] DocQuery('rar') Count={docQuery.TotalCount}, Returned={docQuery.Items.Count}");
         stdout.WriteLine($"[SelfTest] FolderQuery('Windows') Count={folderQuery.TotalCount}, Returned={folderQuery.Items.Count}");
         stdout.WriteLine($"[SelfTest] Everything Query Elapsed: {querySw.Elapsed.TotalMilliseconds:F2} ms");
         stdout.WriteLine($"[SelfTest] Apps('电脑') Returned={apps.Count}, Settings('任务栏') Returned={sysSettings.Count}");
-        stdout.WriteLine($"[SelfTest] ShowInTaskbar={window.ShowInTaskbar}, ToolWindowStyle={window.HasToolWindowExtendedStyle()}");
+        stdout.WriteLine($"[SelfTest] ShowInTaskbar={window.ShowInTaskbar}, NoTaskbarIconConfig={window.HasNoTaskbarIconConfiguration()}");
         stdout.WriteLine($"[SelfTest] WindowBounds=({window.Left:F1}, {window.Top:F1}, {window.Width:F1}x{window.Height:F1}), ScreenHeight={SystemParameters.PrimaryScreenHeight:F1}, Source={boundsService.LastPlacementSource}");
         stdout.WriteLine($"[SelfTest] Adaptive1080p Card=({placement1080p.CardWidthDip:F0}x{placement1080p.CardHeightDip:F0}), Window=({placement1080p.WindowWidthDip:F0}x{placement1080p.WindowHeightDip:F0}), Scale={placement1080p.UiScaleFactor:F2}");
         stdout.WriteLine($"[SelfTest] Adaptive1440p Card=({placement1440p.CardWidthDip:F0}x{placement1440p.CardHeightDip:F0}), Window=({placement1440p.WindowWidthDip:F0}x{placement1440p.WindowHeightDip:F0}), Scale={placement1440p.UiScaleFactor:F2}");
@@ -310,6 +426,8 @@ public partial class App : System.Windows.Application
 
     protected override void OnExit(ExitEventArgs e)
     {
+        _mainWindow?.SaveLastSearchCategory();
+
         if (_trayIcon != null)
         {
             _trayIcon.Visible = false;

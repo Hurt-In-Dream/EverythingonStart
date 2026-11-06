@@ -11,6 +11,8 @@
     <PlatformTarget>x64</PlatformTarget>
     <AssemblyName>EverythingonStart</AssemblyName>
     <RootNamespace>EverythingonStart</RootNamespace>
+    <Version>1.3.0</Version>
+    <Description>Windows 11 开始菜单搜索极速复刻启动器，直连 Everything 实时索引并支持自适应缩放、自定义筛选器与双模式 Win 键触发。</Description>
     <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
     <GarbageCollectionAdaptationMode>1</GarbageCollectionAdaptationMode>
   </PropertyGroup>

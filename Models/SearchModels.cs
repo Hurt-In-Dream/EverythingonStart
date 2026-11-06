@@ -38,7 +38,49 @@ public enum WebSearchEngine
 {
     Bing = 0,
     Google = 1,
-    Baidu = 2
+    Baidu = 2,
+    DuckDuckGo = 3
+}
+
+public enum EverythingSortOrder
+{
+    FollowEverything = 0,
+    DefaultRelevance = 1,
+    NameAscending = 2,
+    NameDescending = 3,
+    DateModifiedDescending = 4,
+    DateModifiedAscending = 5,
+    DateCreatedDescending = 6,
+    DateCreatedAscending = 7,
+    SizeDescending = 8,
+    SizeAscending = 9,
+    PathAscending = 10,
+    PathDescending = 11,
+    ExtensionAscending = 12,
+    RunCountDescending = 13
+}
+
+public enum FilterConfigMode
+{
+    Default = 0,
+    FollowEverything = 1,
+    Custom = 2
+}
+
+public enum ExtraTypeFilter
+{
+    None = 0,
+    Audio = 1,
+    Video = 2,
+    Compressed = 3,
+    Executable = 4,
+    Code = 5
+}
+
+public enum InitialSearchItemMode
+{
+    DefaultAll = 0,
+    LastSelectedOnExit = 1
 }
 
 public sealed class SearchResultItem : INotifyPropertyChanged

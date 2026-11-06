@@ -17,19 +17,23 @@ namespace EverythingonStart;
 public partial class MainWindow : Window
 {
     private static readonly IntPtr HWND_TOPMOST = new(-1);
+    private static readonly IntPtr HWND_NOTOPMOST = new(-2);
     private const int GWL_EXSTYLE = -20;
+    private const long WS_EX_TOPMOST = 0x00000008L;
     private const long WS_EX_TOOLWINDOW = 0x00000080L;
     private const long WS_EX_APPWINDOW = 0x00040000L;
     private const uint SWP_NOSIZE = 0x0001;
     private const uint SWP_NOMOVE = 0x0002;
     private const uint SWP_NOACTIVATE = 0x0010;
     private const uint SWP_SHOWWINDOW = 0x0040;
+    private const uint SWP_ASYNCWINDOWPOS = 0x4000;
     private const int SW_SHOWNOACTIVATE = 4;
     private const uint ABM_ACTIVATE = 0x00000006;
     private const byte VK_MENU = 0x12;
     private const uint KEYEVENTF_EXTENDEDKEY = 0x0001;
     private const uint KEYEVENTF_KEYUP = 0x0002;
     private const uint WM_ACTIVATE = 0x0006;
+    private const uint GW_HWNDPREV = 3;
 
     private readonly AppSettingsService _settingsService;
     private readonly EverythingSearchService _everythingService;
@@ -39,21 +43,31 @@ public partial class MainWindow : Window
     private readonly ActionExecutorService _actionExecutor;
     private readonly StartMenuBoundsService _boundsService;
     private readonly DispatcherTimer _taskbarKeepTopTimer;
+    private readonly DispatcherTimer _searchDebounceTimer;
     private readonly DispatcherTimer _inputHandoverFocusTimer;
     private long _inputHandoverFocusReadySinceTick;
+    private readonly HashSet<IntPtr> _demotedFullscreenWindows = [];
     private WinKeyHookService? _winKeyHookService;
+    private IntPtr _cachedTaskbarHwnd;
+    private bool _noTaskbarStyleApplied;
+    private byte _lastAppliedOpacityAlpha;
+    private bool _isShowingDefaultLanding;
+    private long _searchVersion;
     private int _taskbarKeepTopTicksRemaining;
     private long _openingGraceUntilTick;
     private long _ignoreEscapeUntilTick;
 
     private readonly ObservableCollection<SearchListEntry> _entries = [];
     private CancellationTokenSource? _searchCts;
-    private ITaskbarList? _taskbarList;
+    private ITaskbarList2? _taskbarList;
     private SearchCategory _currentCategory = SearchCategory.All;
     private SearchResultItem? _selectedItem;
     private bool _suppressDeactivateHide;
+    private bool _suppressLastCategorySave;
     private int _webInsertStartIndex = -1;
     private int _webInsertedCount;
+
+    public SearchCategory CurrentCategory => _currentCategory;
 
     public MainWindow(
         AppSettingsService settingsService,
@@ -84,11 +98,11 @@ public partial class MainWindow : Window
 
         _taskbarKeepTopTimer = new DispatcherTimer
         {
-            Interval = TimeSpan.FromMilliseconds(60)
+            Interval = TimeSpan.FromMilliseconds(80)
         };
         _taskbarKeepTopTimer.Tick += (_, _) =>
         {
-            if (!IsVisible || _taskbarKeepTopTicksRemaining <= 0)
+            if (!IsVisible || _taskbarKeepTopTicksRemaining <= 0 || _demotedFullscreenWindows.Count == 0)
             {
                 _taskbarKeepTopTimer.Stop();
                 return;
@@ -96,16 +110,29 @@ public partial class MainWindow : Window
 
             _taskbarKeepTopTicksRemaining--;
             var selfHwnd = new WindowInteropHelper(this).Handle;
-            if (selfHwnd != IntPtr.Zero && GetForegroundWindow() != selfHwnd)
+            if (selfHwnd != IntPtr.Zero && GetForegroundWindow() != selfHwnd && !_suppressDeactivateHide)
             {
                 ActivateWindowForcefully();
                 SearchTextBox.Focus();
             }
 
-            RevealAndRaiseTaskbar();
+            RaiseTaskbarAsyncIfFullscreenActive(selfHwnd);
         };
 
+        _searchDebounceTimer = new DispatcherTimer(DispatcherPriority.Input)
+        {
+            Interval = TimeSpan.FromMilliseconds(14)
+        };
+        _searchDebounceTimer.Tick += (_, _) =>
+        {
+            _searchDebounceTimer.Stop();
+            TriggerSearchImmediate();
+        };
+
+        ApplyInitialSearchItemOnOpen();
+        ApplyVisualSettings();
         UpdateEngineBadge();
+        UpdateSortAndFilterBadges();
         PopulateDefaultLandingEntries();
     }
 
@@ -125,41 +152,62 @@ public partial class MainWindow : Window
         }
     }
 
-    public bool HasToolWindowExtendedStyle()
+    public bool HasNoTaskbarIconConfiguration()
     {
         var hwnd = new WindowInteropHelper(this).Handle;
         if (hwnd == IntPtr.Zero)
             return false;
 
         long exStyle = GetWindowLongPtrW(hwnd, GWL_EXSTYLE).ToInt64();
-        return (exStyle & WS_EX_TOOLWINDOW) != 0 && (exStyle & WS_EX_APPWINDOW) == 0;
+        return !ShowInTaskbar && (exStyle & WS_EX_APPWINDOW) == 0;
     }
 
     private void ApplyNoTaskbarWindowStyle(IntPtr hwnd)
     {
+        if (_noTaskbarStyleApplied || hwnd == IntPtr.Zero)
+            return;
+
+        // 不设置 WS_EX_TOOLWINDOW，防止 explorer.exe 的全屏监控器忽略本窗口而将任务栏隐藏在全屏游戏下方；
+        // 依靠 WPF ShowInTaskbar="False" 的隐藏 Owner 窗口与 ITaskbarList2::DeleteTab 保证不出现任务栏图标
         long exStyle = GetWindowLongPtrW(hwnd, GWL_EXSTYLE).ToInt64();
-        long targetExStyle = (exStyle | WS_EX_TOOLWINDOW) & ~WS_EX_APPWINDOW;
+        long targetExStyle = exStyle & ~WS_EX_APPWINDOW & ~WS_EX_TOOLWINDOW;
         if (targetExStyle != exStyle)
         {
             SetWindowLongPtrW(hwnd, GWL_EXSTYLE, new IntPtr(targetExStyle));
         }
 
-        RemoveFromTaskbarTabList(hwnd);
+        EnsureTaskbarListInitialized();
+        _taskbarList?.DeleteTab(hwnd);
+        _taskbarList?.MarkFullscreenWindow(hwnd, false);
+        _noTaskbarStyleApplied = true;
     }
 
-    private void RemoveFromTaskbarTabList(IntPtr hwnd)
+    private void EnsureTaskbarListInitialized()
     {
-        if (_taskbarList == null)
-        {
-            var taskbarListType = Type.GetTypeFromCLSID(new Guid("56FDF344-FD6D-11d0-958A-006097C9A090"));
-            if (taskbarListType != null && Activator.CreateInstance(taskbarListType) is ITaskbarList instance)
-            {
-                instance.HrInit();
-                _taskbarList = instance;
-            }
-        }
+        if (_taskbarList != null)
+            return;
 
-        _taskbarList?.DeleteTab(hwnd);
+        var taskbarListType = Type.GetTypeFromCLSID(new Guid("56FDF344-FD6D-11d0-958A-006097C9A090"));
+        if (taskbarListType != null && Activator.CreateInstance(taskbarListType) is ITaskbarList2 instance)
+        {
+            instance.HrInit();
+            _taskbarList = instance;
+        }
+    }
+
+    public void ApplyVisualSettings()
+    {
+        double opacityPct = Math.Clamp(_settingsService.Current.WindowOpacityPercent, 75.0, 100.0);
+        byte alpha = (byte)Math.Round((opacityPct / 100.0) * 255.0);
+        if (alpha == _lastAppliedOpacityAlpha)
+            return;
+
+        _lastAppliedOpacityAlpha = alpha;
+        var brush = new System.Windows.Media.SolidColorBrush(
+            System.Windows.Media.Color.FromArgb(alpha, 0x1F, 0x20, 0x23)
+        );
+        brush.Freeze();
+        RootCardBorder.Background = brush;
     }
 
     public void PreWarm()
@@ -171,7 +219,6 @@ public partial class MainWindow : Window
         UpdateLayout();
         Hide();
         ShowActivated = true;
-        TrimProcessMemoryAsync();
     }
 
     public void TogglePopup()
@@ -190,46 +237,74 @@ public partial class MainWindow : Window
     {
         long now = Environment.TickCount64;
         bool fromStartMenuTyping = !string.IsNullOrEmpty(initialText);
-        _openingGraceUntilTick = now + 550;
+        _openingGraceUntilTick = now + 650;
         _ignoreEscapeUntilTick = fromStartMenuTyping ? now + 260 : 0;
 
+        ApplyInitialSearchItemOnOpen();
         PositionLikeStartMenu();
-        UpdateEngineBadge();
+        ApplyVisualSettings();
+        UpdateEngineBadgeFast();
+        UpdateSortAndFilterBadges();
+
+        // 检测呼出前是否存在全屏窗口，仅在存在全屏窗口时执行降级与任务栏置顶
+        RevealAndRaiseTaskbar();
 
         if (!IsVisible)
         {
-            // 若从开始菜单打字唤醒，前 30ms 保持 ShowActivated = false，让 StartMenuExperienceHost 完整接收并消费 VK_ESCAPE 关闭自身
-            ShowActivated = !fromStartMenuTyping;
-            Show();
             ShowActivated = true;
+            Show();
         }
 
         Opacity = 1.0;
-        PlayPopupShowAnimation();
-        RevealAndRaiseTaskbar();
+        if (_settingsService.Current.EnablePopupAnimation)
+            PlayPopupShowAnimation();
+        else
+            ResetPopupAnimationTransforms();
+
+        ActivateWindowForcefully();
 
         if (fromStartMenuTyping)
         {
             SearchTextBox.Text = initialText!;
             SearchTextBox.CaretIndex = SearchTextBox.Text.Length;
+            SearchTextBox.Focus();
+            Keyboard.Focus(SearchTextBox);
 
             _inputHandoverFocusReadySinceTick = 0;
             _inputHandoverFocusTimer.Start();
         }
         else
         {
-            ActivateWindowForcefully();
-            SearchTextBox.SelectAll();
+            if (_settingsService.Current.ClearSearchOnOpen)
+                SearchTextBox.Clear();
+            else
+                SearchTextBox.SelectAll();
+
             SearchTextBox.Focus();
             Keyboard.Focus(SearchTextBox);
         }
 
-        _taskbarKeepTopTicksRemaining = 8;
         _taskbarKeepTopTimer.Stop();
-        _taskbarKeepTopTimer.Start();
+        if (_demotedFullscreenWindows.Count > 0)
+        {
+            _taskbarKeepTopTicksRemaining = 4;
+            _taskbarKeepTopTimer.Start();
+        }
 
-        if (string.IsNullOrWhiteSpace(SearchTextBox.Text))
+        if (string.IsNullOrWhiteSpace(SearchTextBox.Text) && !_isShowingDefaultLanding)
             PopulateDefaultLandingEntries();
+    }
+
+    private void ResetPopupAnimationTransforms()
+    {
+        RootCardBorder.BeginAnimation(OpacityProperty, null);
+        RootCardBorder.Opacity = 1.0;
+        PopupSlideTransform.BeginAnimation(System.Windows.Media.TranslateTransform.YProperty, null);
+        PopupSlideTransform.Y = 0;
+        PopupScaleTransform.BeginAnimation(System.Windows.Media.ScaleTransform.ScaleXProperty, null);
+        PopupScaleTransform.BeginAnimation(System.Windows.Media.ScaleTransform.ScaleYProperty, null);
+        PopupScaleTransform.ScaleX = 1.0;
+        PopupScaleTransform.ScaleY = 1.0;
     }
 
     public void AppendTypedText(string extraText)
@@ -276,32 +351,45 @@ public partial class MainWindow : Window
 
     private void PlayPopupShowAnimation()
     {
-        var slideEase = new QuinticEase { EasingMode = EasingMode.EaseOut };
-        var fadeEase = new CubicEase { EasingMode = EasingMode.EaseOut };
-        var slideDuration = TimeSpan.FromMilliseconds(220);
+        var slideEase = new CubicEase { EasingMode = EasingMode.EaseOut };
+        var slideDuration = TimeSpan.FromMilliseconds(130);
 
-        RootCardBorder.BeginAnimation(
-            OpacityProperty,
-            new DoubleAnimation(0.0, 1.0, TimeSpan.FromMilliseconds(160))
-            {
-                EasingFunction = fadeEase
-            }
-        );
-
-        PopupSlideTransform.BeginAnimation(
-            System.Windows.Media.TranslateTransform.YProperty,
-            new DoubleAnimation(36.0, 0.0, slideDuration)
-            {
-                EasingFunction = slideEase
-            }
-        );
-
-        var scaleAnim = new DoubleAnimation(0.96, 1.0, slideDuration)
+        var slideAnim = new DoubleAnimation(18.0, 0.0, slideDuration)
         {
             EasingFunction = slideEase
         };
-        PopupScaleTransform.BeginAnimation(System.Windows.Media.ScaleTransform.ScaleXProperty, scaleAnim);
-        PopupScaleTransform.BeginAnimation(System.Windows.Media.ScaleTransform.ScaleYProperty, scaleAnim);
+        Timeline.SetDesiredFrameRate(slideAnim, 60);
+
+        PopupSlideTransform.BeginAnimation(
+            System.Windows.Media.TranslateTransform.YProperty,
+            slideAnim
+        );
+    }
+
+    public void ApplyInitialSearchItemOnOpen()
+    {
+        var targetCategory = _settingsService.Current.InitialSearchItem == InitialSearchItemMode.LastSelectedOnExit
+            ? _settingsService.Current.LastSearchCategory
+            : SearchCategory.All;
+
+        _suppressLastCategorySave = true;
+        try
+        {
+            SelectCategoryTab(targetCategory);
+        }
+        finally
+        {
+            _suppressLastCategorySave = false;
+        }
+    }
+
+    public void SaveLastSearchCategory()
+    {
+        if (_settingsService.Current.LastSearchCategory != _currentCategory)
+        {
+            _settingsService.Current.LastSearchCategory = _currentCategory;
+            _settingsService.Save();
+        }
     }
 
     public void HidePopup()
@@ -311,46 +399,61 @@ public partial class MainWindow : Window
         if (!IsVisible)
             return;
 
+        SaveLastSearchCategory();
         _taskbarKeepTopTimer.Stop();
+        _searchDebounceTimer.Stop();
+        Interlocked.Increment(ref _searchVersion);
         _searchCts?.Cancel();
-        RootCardBorder.BeginAnimation(OpacityProperty, null);
-        PopupSlideTransform.BeginAnimation(System.Windows.Media.TranslateTransform.YProperty, null);
-        PopupScaleTransform.BeginAnimation(System.Windows.Media.ScaleTransform.ScaleXProperty, null);
-        PopupScaleTransform.BeginAnimation(System.Windows.Media.ScaleTransform.ScaleYProperty, null);
+        ResetPopupAnimationTransforms();
         Hide();
-        TrimProcessMemoryAsync();
+        RestoreDemotedFullscreenWindows();
     }
 
-    private static void TrimProcessMemoryAsync()
+    private void RestoreDemotedFullscreenWindows()
     {
-        _ = Task.Run(async () =>
+        if (_demotedFullscreenWindows.Count == 0)
+            return;
+
+        EnsureTaskbarListInitialized();
+        uint currentThreadId = GetCurrentThreadId();
+        foreach (var fsHwnd in _demotedFullscreenWindows)
         {
-            await Task.Delay(400);
-            GC.Collect(2, GCCollectionMode.Aggressive, blocking: true, compacting: true);
-            GC.WaitForPendingFinalizers();
-            using var currentProcess = System.Diagnostics.Process.GetCurrentProcess();
-            K32EmptyWorkingSet(currentProcess.Handle);
-        });
+            if (fsHwnd != IntPtr.Zero && IsWindow(fsHwnd) && IsWindowVisible(fsHwnd))
+            {
+                _taskbarList?.MarkFullscreenWindow(fsHwnd, true);
+                uint targetThreadId = GetWindowThreadProcessId(fsHwnd, out _);
+                uint flags = SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE
+                             | (targetThreadId != currentThreadId ? SWP_ASYNCWINDOWPOS : 0);
+                SetWindowPos(fsHwnd, IntPtr.Zero, 0, 0, 0, 0, flags);
+            }
+        }
+
+        _demotedFullscreenWindows.Clear();
     }
 
-    public void RevealAndRaiseTaskbar()
+    public void RevealAndRaiseTaskbar(IntPtr explicitCandidateHwnd = default)
     {
         var selfHwnd = new WindowInteropHelper(this).Handle;
         if (selfHwnd != IntPtr.Zero)
         {
             ApplyNoTaskbarWindowStyle(selfHwnd);
-            SetWindowPos(
-                selfHwnd,
-                HWND_TOPMOST,
-                0,
-                0,
-                0,
-                0,
-                SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_SHOWWINDOW
-            );
         }
 
-        var taskbarHwnd = FindWindowW("Shell_TrayWnd", null);
+        var taskbarHwnd = GetCachedTaskbarWindowHandle();
+        if (_settingsService.Current.KeepTaskbarVisibleInFullscreen)
+        {
+            DemoteFullscreenWindowsBelowTaskbar(selfHwnd, taskbarHwnd, explicitCandidateHwnd);
+        }
+
+        if (_demotedFullscreenWindows.Count > 0)
+        {
+            RaiseTaskbarAsyncIfFullscreenActive(selfHwnd);
+        }
+    }
+
+    private void RaiseTaskbarAsyncIfFullscreenActive(IntPtr selfHwnd)
+    {
+        var taskbarHwnd = GetCachedTaskbarWindowHandle();
         if (taskbarHwnd != IntPtr.Zero)
         {
             ShowWindow(taskbarHwnd, SW_SHOWNOACTIVATE);
@@ -361,23 +464,14 @@ public partial class MainWindow : Window
                 0,
                 0,
                 0,
-                SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_SHOWWINDOW
+                SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_SHOWWINDOW | SWP_ASYNCWINDOWPOS
             );
-
-            var appBarData = new APPBARDATA
-            {
-                cbSize = (uint)Marshal.SizeOf<APPBARDATA>(),
-                hWnd = taskbarHwnd
-            };
-            SHAppBarMessage(ABM_ACTIVATE, ref appBarData);
         }
 
-        var secondaryHwnd = FindWindowW("Shell_SecondaryTrayWnd", null);
-        if (secondaryHwnd != IntPtr.Zero)
+        if (selfHwnd != IntPtr.Zero)
         {
-            ShowWindow(secondaryHwnd, SW_SHOWNOACTIVATE);
             SetWindowPos(
-                secondaryHwnd,
+                selfHwnd,
                 HWND_TOPMOST,
                 0,
                 0,
@@ -386,6 +480,161 @@ public partial class MainWindow : Window
                 SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_SHOWWINDOW
             );
         }
+    }
+
+    private void DemoteFullscreenWindowsBelowTaskbar(
+        IntPtr selfHwnd,
+        IntPtr taskbarHwnd,
+        IntPtr explicitCandidateHwnd = default
+    )
+    {
+        int screenW = GetSystemMetrics(0);
+        int screenH = GetSystemMetrics(1);
+        if (screenW <= 0 || screenH <= 0)
+            return;
+
+        Span<IntPtr> candidates =
+        [
+            explicitCandidateHwnd,
+            _winKeyHookService?.LastAppBeforeWinKeyHwnd ?? IntPtr.Zero,
+            GetForegroundWindow()
+        ];
+
+        uint currentThreadId = GetCurrentThreadId();
+        for (int i = 0; i < candidates.Length; i++)
+        {
+            var hwnd = candidates[i];
+            if (hwnd == IntPtr.Zero || hwnd == selfHwnd || hwnd == taskbarHwnd)
+                continue;
+
+            bool duplicate = false;
+            for (int j = 0; j < i; j++)
+            {
+                if (candidates[j] == hwnd)
+                {
+                    duplicate = true;
+                    break;
+                }
+            }
+            if (duplicate)
+                continue;
+
+            if (!IsWindowVisible(hwnd) || !GetWindowRect(hwnd, out var rect))
+                continue;
+
+            int width = rect.Right - rect.Left;
+            int height = rect.Bottom - rect.Top;
+            if (rect.Left > 4 || rect.Top > 4 || width < screenW - 8 || height < screenH - 8)
+                continue;
+
+            if (IsShellDesktopOrCoreWindow(hwnd))
+                continue;
+
+            EnsureTaskbarListInitialized();
+            if (_demotedFullscreenWindows.Add(hwnd))
+            {
+                _taskbarList?.MarkFullscreenWindow(hwnd, false);
+            }
+
+            uint targetThreadId = GetWindowThreadProcessId(hwnd, out _);
+            uint asyncFlag = targetThreadId != currentThreadId ? SWP_ASYNCWINDOWPOS : 0;
+
+            SetWindowPos(
+                hwnd,
+                HWND_NOTOPMOST,
+                0,
+                0,
+                0,
+                0,
+                SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | asyncFlag
+            );
+            if (taskbarHwnd != IntPtr.Zero)
+            {
+                SetWindowPos(
+                    hwnd,
+                    taskbarHwnd,
+                    0,
+                    0,
+                    0,
+                    0,
+                    SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | asyncFlag
+                );
+            }
+        }
+    }
+
+    private IntPtr GetCachedTaskbarWindowHandle()
+    {
+        if (_cachedTaskbarHwnd != IntPtr.Zero && IsWindow(_cachedTaskbarHwnd))
+            return _cachedTaskbarHwnd;
+
+        _cachedTaskbarHwnd = FindWindowW("Shell_TrayWnd", null);
+        return _cachedTaskbarHwnd;
+    }
+
+    private static unsafe bool IsShellDesktopOrCoreWindow(IntPtr hwnd)
+    {
+        char* clsBuf = stackalloc char[128];
+        int len = GetClassNameW(hwnd, clsBuf, 128);
+        if (len <= 0)
+            return false;
+
+        ReadOnlySpan<char> className = new(clsBuf, len);
+        return className.Equals("Progman", StringComparison.OrdinalIgnoreCase)
+               || className.Equals("WorkerW", StringComparison.OrdinalIgnoreCase)
+               || className.Equals("Shell_TrayWnd", StringComparison.OrdinalIgnoreCase)
+               || className.Equals("Shell_SecondaryTrayWnd", StringComparison.OrdinalIgnoreCase)
+               || className.Equals("Windows.UI.Core.CoreWindow", StringComparison.OrdinalIgnoreCase)
+               || className.Equals("XamlExplorerHostIslandWindow", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static IntPtr FindTaskbarWindowHandle()
+    {
+        return FindWindowW("Shell_TrayWnd", null);
+    }
+
+    public static bool IsTaskbarAboveWindowInZOrder(IntPtr targetHwnd)
+        => IsTaskbarAboveWindowInZOrder(targetHwnd, out _);
+
+    public static bool IsTaskbarAboveWindowInZOrder(IntPtr targetHwnd, out string diag)
+    {
+        if (targetHwnd == IntPtr.Zero)
+        {
+            diag = "target=0x0";
+            return false;
+        }
+
+        long targetExStyle = GetWindowLongPtrW(targetHwnd, GWL_EXSTYLE).ToInt64();
+        bool targetTopmost = (targetExStyle & WS_EX_TOPMOST) != 0;
+        GetWindowRect(targetHwnd, out var rect);
+
+        var taskbarHwnd = FindTaskbarWindowHandle();
+        if (taskbarHwnd == IntPtr.Zero)
+        {
+            diag = $"targetDemoted={!targetTopmost}, rect=({rect.Left},{rect.Top},{rect.Right - rect.Left}x{rect.Bottom - rect.Top})";
+            return !targetTopmost;
+        }
+
+        long tbExStyle = GetWindowLongPtrW(taskbarHwnd, GWL_EXSTYLE).ToInt64();
+        bool tbTopmost = (tbExStyle & WS_EX_TOPMOST) != 0;
+
+        var cur = targetHwnd;
+        int stepsToTaskbarAbove = -1;
+        for (int step = 1; step < 500 && cur != IntPtr.Zero; step++)
+        {
+            cur = GetWindow(cur, GW_HWNDPREV);
+            if (cur == taskbarHwnd)
+            {
+                stepsToTaskbarAbove = step;
+                break;
+            }
+        }
+
+        diag = $"tbTop={tbTopmost}, targetDemoted={!targetTopmost}, stepsAbove={stepsToTaskbarAbove}";
+        if (!targetTopmost && (tbExStyle == 0 || tbTopmost || stepsToTaskbarAbove > 0))
+            return true;
+
+        return stepsToTaskbarAbove > 0;
     }
 
     public void PositionLikeStartMenu()
@@ -434,11 +683,73 @@ public partial class MainWindow : Window
         Activate();
     }
 
+    private void UpdateEngineBadgeFast()
+    {
+        if (_everythingService.IsConnected)
+        {
+            EngineStatusBadge.Text = "Everything 极速引擎";
+            EngineStatusBadge.ToolTip = _everythingService.ActiveEngineDescription;
+            return;
+        }
+
+        _ = Task.Run(() =>
+        {
+            _everythingService.EnsureConnected();
+            Dispatcher.BeginInvoke(() =>
+            {
+                EngineStatusBadge.Text = _everythingService.IsConnected ? "Everything 极速引擎" : "Everything 未运行";
+                EngineStatusBadge.ToolTip = _everythingService.ActiveEngineDescription;
+            });
+        });
+    }
+
     private void UpdateEngineBadge()
     {
-        _everythingService.EnsureConnected();
-        EngineStatusBadge.Text = _everythingService.IsConnected ? "Everything 极速引擎" : "Everything 未运行";
-        EngineStatusBadge.ToolTip = _everythingService.ActiveEngineDescription;
+        UpdateEngineBadgeFast();
+    }
+
+    public void UpdateSortAndFilterBadges()
+    {
+        var cur = _settingsService.Current;
+
+        string sortShort = cur.SortOrder switch
+        {
+            EverythingSortOrder.FollowEverything => "跟随",
+            EverythingSortOrder.NameAscending => "名称↑",
+            EverythingSortOrder.NameDescending => "名称↓",
+            EverythingSortOrder.DateModifiedDescending => "修改↓",
+            EverythingSortOrder.DateModifiedAscending => "修改↑",
+            EverythingSortOrder.DateCreatedDescending => "创建↓",
+            EverythingSortOrder.DateCreatedAscending => "创建↑",
+            EverythingSortOrder.SizeDescending => "大小↓",
+            EverythingSortOrder.SizeAscending => "大小↑",
+            EverythingSortOrder.PathAscending => "路径↑",
+            EverythingSortOrder.PathDescending => "路径↓",
+            EverythingSortOrder.ExtensionAscending => "扩展名",
+            EverythingSortOrder.RunCountDescending => "常用↓",
+            _ => "智能"
+        };
+        SortButtonLabel.Text = $"排序: {sortShort}";
+
+        var effectiveMode = cur.GetEffectiveCategoryMode(_currentCategory);
+        string modeShort = effectiveMode switch
+        {
+            FilterConfigMode.FollowEverything => "跟随",
+            FilterConfigMode.Custom => "自定义",
+            _ => "默认"
+        };
+
+        string extraSuffix = cur.ActiveExtraFilter switch
+        {
+            ExtraTypeFilter.Audio => "•音频",
+            ExtraTypeFilter.Video => "•视频",
+            ExtraTypeFilter.Compressed => "•压缩",
+            ExtraTypeFilter.Executable => "•程序",
+            ExtraTypeFilter.Code => "•代码",
+            _ => string.Empty
+        };
+
+        FilterButtonLabel.Text = $"筛选: {modeShort}{extraSuffix}";
     }
 
     private void OnSearchTextChanged(object sender, TextChangedEventArgs e)
@@ -447,7 +758,15 @@ public partial class MainWindow : Window
         PlaceholderText.Visibility = hasText ? Visibility.Collapsed : Visibility.Visible;
         ClearSearchButton.Visibility = hasText ? Visibility.Visible : Visibility.Collapsed;
 
-        TriggerSearch();
+        if (!hasText)
+        {
+            _searchDebounceTimer.Stop();
+            TriggerSearchImmediate();
+            return;
+        }
+
+        _searchDebounceTimer.Stop();
+        _searchDebounceTimer.Start();
     }
 
     private void OnClearSearchClick(object sender, RoutedEventArgs e)
@@ -458,8 +777,21 @@ public partial class MainWindow : Window
 
     private void OnBackToAllCategoryClick(object sender, RoutedEventArgs e)
     {
+        ExecuteBackOrCloseAction();
+    }
+
+    public bool ExecuteBackOrCloseAction()
+    {
+        if ((_currentCategory == SearchCategory.All || TabAll.IsChecked == true)
+            && _settingsService.Current.BackButtonClosesOnAllTab)
+        {
+            HidePopup();
+            return true;
+        }
+
         TabAll.IsChecked = true;
         SearchTextBox.Focus();
+        return false;
     }
 
     private void OnOpenInEverythingClick(object sender, RoutedEventArgs e)
@@ -473,13 +805,26 @@ public partial class MainWindow : Window
         if (sender is RadioButton { Tag: SearchCategory category } && IsLoaded)
         {
             _currentCategory = category;
-            TriggerSearch();
+            if (!_suppressLastCategorySave)
+            {
+                SaveLastSearchCategory();
+            }
+
+            UpdateSortAndFilterBadges();
+            TriggerSearchImmediate();
             SearchTextBox.Focus();
         }
     }
 
     private void TriggerSearch()
     {
+        _searchDebounceTimer.Stop();
+        TriggerSearchImmediate();
+    }
+
+    private void TriggerSearchImmediate()
+    {
+        long version = Interlocked.Increment(ref _searchVersion);
         _searchCts?.Cancel();
         _searchCts = new CancellationTokenSource();
         var token = _searchCts.Token;
@@ -492,144 +837,194 @@ public partial class MainWindow : Window
             return;
         }
 
-        Task.Run(() => ExecuteLocalSearch(query, category, token), token);
+        _isShowingDefaultLanding = false;
+        Task.Run(() => ExecuteLocalSearch(query, category, version, token), token);
     }
 
     private void PopulateDefaultLandingEntries()
     {
+        _isShowingDefaultLanding = true;
         _entries.Clear();
         _webInsertStartIndex = -1;
         _webInsertedCount = 0;
 
-        var apps = _startMenuService.QueryApps("", 8);
-        if (apps.Count > 0)
+        bool showApps = _settingsService.Current.IncludeStartMenuApps && _currentCategory != SearchCategory.Settings;
+        bool showSettings = _settingsService.Current.ShowSettingsInAll || _currentCategory == SearchCategory.Settings;
+        if (_currentCategory == SearchCategory.Apps)
         {
-            _entries.Add(SearchListEntry.CreateHeader("常用应用与系统入口", $"{apps.Count}", SearchCategory.Apps));
-            bool first = true;
-            foreach (var app in apps)
+            showSettings = false;
+        }
+
+        if (showApps)
+        {
+            int appLimit = _currentCategory == SearchCategory.Apps ? 18 : 8;
+            var apps = _startMenuService.QueryApps("", appLimit);
+            if (apps.Count > 0)
             {
-                _iconCacheService.PopulateIconsAsync(app);
-                _entries.Add(SearchListEntry.CreateItem(app, isBestMatch: first));
-                first = false;
+                _entries.Add(SearchListEntry.CreateHeader("常用应用与系统入口", $"{apps.Count}", SearchCategory.Apps));
+                bool first = true;
+                foreach (var app in apps)
+                {
+                    _iconCacheService.PopulateIconsAsync(app);
+                    _entries.Add(SearchListEntry.CreateItem(app, isBestMatch: first));
+                    first = false;
+                }
             }
         }
 
-        var settings = _startMenuService.QuerySettings("", 7);
-        if (settings.Count > 0)
+        if (showSettings)
         {
-            _entries.Add(SearchListEntry.CreateHeader("快捷系统设置", $"{settings.Count}+", SearchCategory.Settings));
-            foreach (var setting in settings)
+            int settingLimit = _currentCategory == SearchCategory.Settings ? 18 : 7;
+            var settings = _startMenuService.QuerySettings("", settingLimit);
+            if (settings.Count > 0)
             {
-                _iconCacheService.PopulateIconsAsync(setting);
-                _entries.Add(SearchListEntry.CreateItem(setting));
+                _entries.Add(SearchListEntry.CreateHeader("快捷系统设置", $"{settings.Count}+", SearchCategory.Settings));
+                bool first = _entries.Count == 0;
+                foreach (var setting in settings)
+                {
+                    _iconCacheService.PopulateIconsAsync(setting);
+                    _entries.Add(SearchListEntry.CreateItem(setting, isBestMatch: first));
+                    first = false;
+                }
             }
         }
 
         SelectFirstSelectableEntry();
     }
 
-    private void ExecuteLocalSearch(string query, SearchCategory category, CancellationToken token)
+    private void ExecuteLocalSearch(string query, SearchCategory category, long version, CancellationToken token)
     {
-        if (token.IsCancellationRequested)
+        if (token.IsCancellationRequested || version != Volatile.Read(ref _searchVersion))
             return;
+
+        var curSettings = _settingsService.Current;
+        int maxGroup = Math.Clamp(curSettings.MaxResultsPerGroupInAll, 3, 15);
+        int maxSingle = Math.Clamp(curSettings.MaxResultsInSingleCategory, 30, 500);
 
         if (category == SearchCategory.All)
         {
-            var appResults = _startMenuService.QueryApps(query, 4);
-            var settingResults = _startMenuService.QuerySettings(query, 3);
-            var folderResult = _everythingService.Query(query, SearchCategory.Folders, 5, token);
-            var docResult = _everythingService.Query(query, SearchCategory.Documents, 8, token);
+            var appResults = curSettings.IncludeStartMenuApps
+                ? _startMenuService.QueryApps(query, maxGroup)
+                : Array.Empty<SearchResultItem>();
+            var settingResults = curSettings.ShowSettingsInAll
+                ? _startMenuService.QuerySettings(query, Math.Max(3, maxGroup - 2))
+                : Array.Empty<SearchResultItem>();
 
-            if (token.IsCancellationRequested)
+            if (token.IsCancellationRequested || version != Volatile.Read(ref _searchVersion))
                 return;
 
-            Dispatcher.Invoke(() =>
-            {
-                if (token.IsCancellationRequested)
-                    return;
+            var folderResult = _everythingService.Query(query, SearchCategory.Folders, maxGroup, token);
+            if (token.IsCancellationRequested || version != Volatile.Read(ref _searchVersion))
+                return;
 
-                BuildAllCategoryList(query, appResults, settingResults, folderResult, docResult);
-            });
+            var docResult = _everythingService.Query(query, SearchCategory.Documents, maxGroup + 2, token);
+            if (token.IsCancellationRequested || version != Volatile.Read(ref _searchVersion))
+                return;
 
-            _ = LoadAndSpliceWebSuggestionsAsync(query, maxCount: 4, token);
+            Dispatcher.BeginInvoke(
+                () =>
+                {
+                    if (token.IsCancellationRequested || version != Volatile.Read(ref _searchVersion))
+                        return;
+
+                    BuildAllCategoryList(query, appResults, settingResults, folderResult, docResult, maxGroup);
+                },
+                DispatcherPriority.Input
+            );
+
+            if (curSettings.ShowWebSuggestionsInAll)
+                _ = LoadAndSpliceWebSuggestionsAsync(query, maxCount: 4, token);
         }
         else if (category == SearchCategory.Web)
         {
             var directWeb = _webSuggestionService.CreateDirectWebSearchItem(query);
             _iconCacheService.PopulateIconsAsync(directWeb);
 
-            Dispatcher.Invoke(() =>
-            {
-                if (token.IsCancellationRequested)
-                    return;
+            Dispatcher.BeginInvoke(
+                () =>
+                {
+                    if (token.IsCancellationRequested || version != Volatile.Read(ref _searchVersion))
+                        return;
 
-                _entries.Clear();
-                _entries.Add(SearchListEntry.CreateHeader("搜索 Web", "实时联想"));
-                _entries.Add(SearchListEntry.CreateItem(directWeb, isBestMatch: true));
-                _webInsertStartIndex = _entries.Count;
-                _webInsertedCount = 0;
-                SelectFirstSelectableEntry();
-            });
+                    _entries.Clear();
+                    _entries.Add(SearchListEntry.CreateHeader("搜索 Web", "实时联想"));
+                    _entries.Add(SearchListEntry.CreateItem(directWeb, isBestMatch: true));
+                    _webInsertStartIndex = _entries.Count;
+                    _webInsertedCount = 0;
+                    SelectFirstSelectableEntry();
+                },
+                DispatcherPriority.Input
+            );
 
             _ = LoadAndSpliceWebSuggestionsAsync(query, maxCount: 12, token);
         }
         else if (category == SearchCategory.Apps)
         {
-            var localApps = _startMenuService.QueryApps(query, 40);
-            var exeResult = _everythingService.Query(query, SearchCategory.Apps, 60, token);
-            if (token.IsCancellationRequested)
+            var localApps = curSettings.IncludeStartMenuApps
+                ? _startMenuService.QueryApps(query, 40)
+                : Array.Empty<SearchResultItem>();
+            var exeResult = curSettings.IncludeEverythingApps
+                ? _everythingService.Query(query, SearchCategory.Apps, maxSingle, token)
+                : new EverythingQueryResult(Array.Empty<SearchResultItem>(), 0);
+            if (token.IsCancellationRequested || version != Volatile.Read(ref _searchVersion))
                 return;
 
-            Dispatcher.Invoke(() =>
-            {
-                if (token.IsCancellationRequested)
-                    return;
-
-                _entries.Clear();
-                _webInsertStartIndex = -1;
-                _entries.Add(SearchListEntry.CreateHeader("应用", FormatCountBadge(localApps.Count + exeResult.TotalCount)));
-                bool first = true;
-                var seenPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-
-                foreach (var app in localApps.Concat(exeResult.Items))
+            Dispatcher.BeginInvoke(
+                () =>
                 {
-                    if (!seenPaths.Add(app.FullPath))
-                        continue;
+                    if (token.IsCancellationRequested || version != Volatile.Read(ref _searchVersion))
+                        return;
 
-                    _iconCacheService.PopulateIconsAsync(app);
-                    _entries.Add(SearchListEntry.CreateItem(app, isBestMatch: first));
-                    first = false;
-                }
+                    _entries.Clear();
+                    _webInsertStartIndex = -1;
+                    _entries.Add(SearchListEntry.CreateHeader("应用", FormatCountBadge(localApps.Count + exeResult.TotalCount)));
+                    bool first = true;
+                    var seenPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-                SelectFirstSelectableEntry();
-            });
+                    foreach (var app in localApps.Concat(exeResult.Items))
+                    {
+                        if (!seenPaths.Add(app.FullPath))
+                            continue;
+
+                        _iconCacheService.PopulateIconsAsync(app);
+                        _entries.Add(SearchListEntry.CreateItem(app, isBestMatch: first));
+                        first = false;
+                    }
+
+                    SelectFirstSelectableEntry();
+                },
+                DispatcherPriority.Input
+            );
         }
         else if (category == SearchCategory.Settings)
         {
-            var settings = _startMenuService.QuerySettings(query, 35);
-            Dispatcher.Invoke(() =>
-            {
-                if (token.IsCancellationRequested)
-                    return;
-
-                _entries.Clear();
-                _webInsertStartIndex = -1;
-                _entries.Add(SearchListEntry.CreateHeader("设置", $"{settings.Count}"));
-                bool first = true;
-                foreach (var s in settings)
+            var settings = _startMenuService.QuerySettings(query, 40);
+            Dispatcher.BeginInvoke(
+                () =>
                 {
-                    _iconCacheService.PopulateIconsAsync(s);
-                    _entries.Add(SearchListEntry.CreateItem(s, isBestMatch: first));
-                    first = false;
-                }
+                    if (token.IsCancellationRequested || version != Volatile.Read(ref _searchVersion))
+                        return;
 
-                SelectFirstSelectableEntry();
-            });
+                    _entries.Clear();
+                    _webInsertStartIndex = -1;
+                    _entries.Add(SearchListEntry.CreateHeader("设置", $"{settings.Count}"));
+                    bool first = true;
+                    foreach (var s in settings)
+                    {
+                        _iconCacheService.PopulateIconsAsync(s);
+                        _entries.Add(SearchListEntry.CreateItem(s, isBestMatch: first));
+                        first = false;
+                    }
+
+                    SelectFirstSelectableEntry();
+                },
+                DispatcherPriority.Input
+            );
         }
         else
         {
-            var evResult = _everythingService.Query(query, category, 120, token);
-            if (token.IsCancellationRequested)
+            var evResult = _everythingService.Query(query, category, maxSingle, token);
+            if (token.IsCancellationRequested || version != Volatile.Read(ref _searchVersion))
                 return;
 
             string headerName = category switch
@@ -640,24 +1035,27 @@ public partial class MainWindow : Window
                 _ => "搜索结果"
             };
 
-            Dispatcher.Invoke(() =>
-            {
-                if (token.IsCancellationRequested)
-                    return;
-
-                _entries.Clear();
-                _webInsertStartIndex = -1;
-                _entries.Add(SearchListEntry.CreateHeader(headerName, FormatCountBadge(evResult.TotalCount)));
-                bool first = true;
-                foreach (var item in evResult.Items)
+            Dispatcher.BeginInvoke(
+                () =>
                 {
-                    _iconCacheService.PopulateIconsAsync(item);
-                    _entries.Add(SearchListEntry.CreateItem(item, isBestMatch: first));
-                    first = false;
-                }
+                    if (token.IsCancellationRequested || version != Volatile.Read(ref _searchVersion))
+                        return;
 
-                SelectFirstSelectableEntry();
-            });
+                    _entries.Clear();
+                    _webInsertStartIndex = -1;
+                    _entries.Add(SearchListEntry.CreateHeader(headerName, FormatCountBadge(evResult.TotalCount)));
+                    bool first = true;
+                    foreach (var item in evResult.Items)
+                    {
+                        _iconCacheService.PopulateIconsAsync(item);
+                        _entries.Add(SearchListEntry.CreateItem(item, isBestMatch: first));
+                        first = false;
+                    }
+
+                    SelectFirstSelectableEntry();
+                },
+                DispatcherPriority.Input
+            );
         }
     }
 
@@ -666,7 +1064,8 @@ public partial class MainWindow : Window
         IReadOnlyList<SearchResultItem> appResults,
         IReadOnlyList<SearchResultItem> settingResults,
         EverythingQueryResult folderResult,
-        EverythingQueryResult docResult
+        EverythingQueryResult docResult,
+        int maxGroup
     )
     {
         _entries.Clear();
@@ -690,16 +1089,23 @@ public partial class MainWindow : Window
             }
         }
 
-        // 搜索 Web 分组（完全对应截图位置）
-        var directWeb = _webSuggestionService.CreateDirectWebSearchItem(query);
-        _iconCacheService.PopulateIconsAsync(directWeb);
-        _entries.Add(SearchListEntry.CreateHeader("搜索 Web", "10+", SearchCategory.Web));
-        _entries.Add(SearchListEntry.CreateItem(directWeb, isBestMatch: bestMatch == null));
-        _webInsertStartIndex = _entries.Count;
-        _webInsertedCount = 0;
+        if (_settingsService.Current.ShowWebSuggestionsInAll)
+        {
+            var directWeb = _webSuggestionService.CreateDirectWebSearchItem(query);
+            _iconCacheService.PopulateIconsAsync(directWeb);
+            _entries.Add(SearchListEntry.CreateHeader("搜索 Web", "10+", SearchCategory.Web));
+            _entries.Add(SearchListEntry.CreateItem(directWeb, isBestMatch: bestMatch == null));
+            _webInsertStartIndex = _entries.Count;
+            _webInsertedCount = 0;
+        }
+        else
+        {
+            _webInsertStartIndex = -1;
+            _webInsertedCount = 0;
+        }
 
         // 文件夹分组
-        var folders = folderResult.Items.Where(f => !usedPaths.Contains(f.FullPath)).Take(4).ToList();
+        var folders = folderResult.Items.Where(f => !usedPaths.Contains(f.FullPath)).Take(Math.Max(2, maxGroup - 2)).ToList();
         if (folders.Count > 0)
         {
             _entries.Add(SearchListEntry.CreateHeader("文件夹", FormatCountBadge(folderResult.TotalCount), SearchCategory.Folders));
@@ -712,7 +1118,7 @@ public partial class MainWindow : Window
         }
 
         // 文档与文件分组
-        var docs = docResult.Items.Where(d => !usedPaths.Contains(d.FullPath)).Take(6).ToList();
+        var docs = docResult.Items.Where(d => !usedPaths.Contains(d.FullPath)).Take(maxGroup).ToList();
         if (docs.Count > 0)
         {
             _entries.Add(SearchListEntry.CreateHeader("文档", FormatCountBadge(docResult.TotalCount), SearchCategory.Documents));
@@ -725,7 +1131,7 @@ public partial class MainWindow : Window
         }
 
         // 其余应用与设置分组
-        var remainingApps = appResults.Where(a => !usedPaths.Contains(a.FullPath)).Take(3).ToList();
+        var remainingApps = appResults.Where(a => !usedPaths.Contains(a.FullPath)).Take(Math.Max(2, maxGroup - 2)).ToList();
         if (remainingApps.Count > 0)
         {
             _entries.Add(SearchListEntry.CreateHeader("应用", $"{appResults.Count}", SearchCategory.Apps));
@@ -736,14 +1142,17 @@ public partial class MainWindow : Window
             }
         }
 
-        var remainingSettings = settingResults.Where(s => !usedPaths.Contains(s.FullPath)).Take(3).ToList();
-        if (remainingSettings.Count > 0)
+        if (_settingsService.Current.ShowSettingsInAll)
         {
-            _entries.Add(SearchListEntry.CreateHeader("设置", $"{settingResults.Count}", SearchCategory.Settings));
-            foreach (var setting in remainingSettings)
+            var remainingSettings = settingResults.Where(s => !usedPaths.Contains(s.FullPath)).Take(3).ToList();
+            if (remainingSettings.Count > 0)
             {
-                _iconCacheService.PopulateIconsAsync(setting);
-                _entries.Add(SearchListEntry.CreateItem(setting));
+                _entries.Add(SearchListEntry.CreateHeader("设置", $"{settingResults.Count}", SearchCategory.Settings));
+                foreach (var setting in remainingSettings)
+                {
+                    _iconCacheService.PopulateIconsAsync(setting);
+                    _entries.Add(SearchListEntry.CreateItem(setting));
+                }
             }
         }
 
@@ -973,7 +1382,7 @@ public partial class MainWindow : Window
                 return;
             }
 
-            if (!string.IsNullOrEmpty(SearchTextBox.Text))
+            if (_settingsService.Current.EscClearsSearchFirst && !string.IsNullOrEmpty(SearchTextBox.Text))
                 SearchTextBox.Clear();
             else
                 HidePopup();
@@ -1077,8 +1486,9 @@ public partial class MainWindow : Window
         tabs[nextIndex].IsChecked = true;
     }
 
-    private void SelectCategoryTab(SearchCategory category)
+    public void SelectCategoryTab(SearchCategory category)
     {
+        _currentCategory = category;
         RadioButton target = category switch
         {
             SearchCategory.Apps => TabApps,
@@ -1089,7 +1499,253 @@ public partial class MainWindow : Window
             SearchCategory.Photos => TabPhotos,
             _ => TabAll
         };
-        target.IsChecked = true;
+        if (target.IsChecked != true)
+        {
+            target.IsChecked = true;
+        }
+        else if (IsLoaded)
+        {
+            UpdateSortAndFilterBadges();
+            TriggerSearchImmediate();
+        }
+    }
+
+    private void OnSortSelectorButtonClick(object sender, RoutedEventArgs e)
+    {
+        _suppressDeactivateHide = true;
+
+        var menu = new ContextMenu();
+        var s = _settingsService.Current;
+
+        void AddSortItem(string header, EverythingSortOrder sortOrder)
+        {
+            var item = new MenuItem
+            {
+                Header = header,
+                IsCheckable = true,
+                IsChecked = s.SortOrder == sortOrder
+            };
+            item.Click += (_, _) =>
+            {
+                s.SortOrder = sortOrder;
+                _settingsService.Save();
+                UpdateSortAndFilterBadges();
+                TriggerSearch();
+            };
+            menu.Items.Add(item);
+        }
+
+        AddSortItem("跟随 Everything 设置", EverythingSortOrder.FollowEverything);
+        menu.Items.Add(new Separator());
+        AddSortItem("运行次数（高频优先 · 默认）", EverythingSortOrder.RunCountDescending);
+        AddSortItem("修改时间（从新到旧）", EverythingSortOrder.DateModifiedDescending);
+        AddSortItem("修改时间（从旧到新）", EverythingSortOrder.DateModifiedAscending);
+        menu.Items.Add(new Separator());
+        AddSortItem("名称（A → Z 升序）", EverythingSortOrder.NameAscending);
+        AddSortItem("名称（Z → A 降序）", EverythingSortOrder.NameDescending);
+        AddSortItem("路径（A → Z 升序）", EverythingSortOrder.PathAscending);
+        AddSortItem("路径（Z → A 降序）", EverythingSortOrder.PathDescending);
+        menu.Items.Add(new Separator());
+        AddSortItem("大小（从大到小）", EverythingSortOrder.SizeDescending);
+        AddSortItem("大小（从小到大）", EverythingSortOrder.SizeAscending);
+        AddSortItem("扩展名（A → Z 升序）", EverythingSortOrder.ExtensionAscending);
+        AddSortItem("创建时间（从新到旧）", EverythingSortOrder.DateCreatedDescending);
+
+        menu.Closed += (_, _) =>
+        {
+            _suppressDeactivateHide = false;
+            SearchTextBox.Focus();
+        };
+
+        menu.PlacementTarget = SortSelectorButton;
+        menu.IsOpen = true;
+    }
+
+    private void OnFilterSelectorButtonClick(object sender, RoutedEventArgs e)
+    {
+        _suppressDeactivateHide = true;
+
+        var menu = new ContextMenu();
+        var s = _settingsService.Current;
+
+        void AddExtraFilterItem(string header, ExtraTypeFilter filter)
+        {
+            var item = new MenuItem
+            {
+                Header = header,
+                IsCheckable = true,
+                IsChecked = s.ActiveExtraFilter == filter
+            };
+            item.Click += (_, _) =>
+            {
+                s.ActiveExtraFilter = filter;
+                _settingsService.Save();
+                UpdateSortAndFilterBadges();
+                TriggerSearch();
+            };
+            menu.Items.Add(item);
+        }
+
+        AddExtraFilterItem("附加类型筛选：不限（按当前分类标签）", ExtraTypeFilter.None);
+        AddExtraFilterItem("附加类型筛选：仅音频文件 (mp3/flac/wav...)", ExtraTypeFilter.Audio);
+        AddExtraFilterItem("附加类型筛选：仅视频文件 (mp4/mkv/mov...)", ExtraTypeFilter.Video);
+        AddExtraFilterItem("附加类型筛选：仅压缩包 (zip/7z/rar...)", ExtraTypeFilter.Compressed);
+        AddExtraFilterItem("附加类型筛选：仅可执行程序与安装包 (exe/msi/bat...)", ExtraTypeFilter.Executable);
+        AddExtraFilterItem("附加类型筛选：仅代码与脚本文件 (cs/py/ts/json...)", ExtraTypeFilter.Code);
+
+        menu.Items.Add(new Separator());
+
+        var followToggle = new MenuItem
+        {
+            Header = "搜索匹配修饰项：跟随 Everything 设置",
+            IsCheckable = true,
+            IsChecked = s.FollowEverythingSearchFlags
+        };
+        followToggle.Click += (_, _) =>
+        {
+            s.FollowEverythingSearchFlags = followToggle.IsChecked;
+            _settingsService.Save();
+            UpdateSortAndFilterBadges();
+            TriggerSearch();
+        };
+        menu.Items.Add(followToggle);
+
+        var matchCaseItem = new MenuItem
+        {
+            Header = "区分大小写 (Match Case)",
+            IsCheckable = true,
+            IsChecked = s.MatchCase
+        };
+        matchCaseItem.Click += (_, _) =>
+        {
+            s.FollowEverythingSearchFlags = false;
+            s.MatchCase = matchCaseItem.IsChecked;
+            _settingsService.Save();
+            UpdateSortAndFilterBadges();
+            TriggerSearch();
+        };
+        menu.Items.Add(matchCaseItem);
+
+        var matchWholeWordItem = new MenuItem
+        {
+            Header = "全字匹配 (Whole Word)",
+            IsCheckable = true,
+            IsChecked = s.MatchWholeWord
+        };
+        matchWholeWordItem.Click += (_, _) =>
+        {
+            s.FollowEverythingSearchFlags = false;
+            s.MatchWholeWord = matchWholeWordItem.IsChecked;
+            _settingsService.Save();
+            UpdateSortAndFilterBadges();
+            TriggerSearch();
+        };
+        menu.Items.Add(matchWholeWordItem);
+
+        var matchPathItem = new MenuItem
+        {
+            Header = "匹配完整路径 (Match Path)",
+            IsCheckable = true,
+            IsChecked = s.MatchPath
+        };
+        matchPathItem.Click += (_, _) =>
+        {
+            s.FollowEverythingSearchFlags = false;
+            s.MatchPath = matchPathItem.IsChecked;
+            _settingsService.Save();
+            UpdateSortAndFilterBadges();
+            TriggerSearch();
+        };
+        menu.Items.Add(matchPathItem);
+
+        var enableRegexItem = new MenuItem
+        {
+            Header = "启用正则表达式 (Regex)",
+            IsCheckable = true,
+            IsChecked = s.EnableRegex
+        };
+        enableRegexItem.Click += (_, _) =>
+        {
+            s.FollowEverythingSearchFlags = false;
+            s.EnableRegex = enableRegexItem.IsChecked;
+            _settingsService.Save();
+            UpdateSortAndFilterBadges();
+            TriggerSearch();
+        };
+        menu.Items.Add(enableRegexItem);
+
+        menu.Items.Add(new Separator());
+
+        var customizeFiltersItem = new MenuItem
+        {
+            Header = "自定义各子选项文件类型与 Everything 筛选器...",
+            Icon = CreateMingCuteSettingsMenuIcon()
+        };
+        customizeFiltersItem.Click += (_, _) => OpenSettingsDialog(0);
+        menu.Items.Add(customizeFiltersItem);
+
+        menu.Closed += (_, _) =>
+        {
+            _suppressDeactivateHide = false;
+            SearchTextBox.Focus();
+        };
+
+        menu.PlacementTarget = FilterSelectorButton;
+        menu.IsOpen = true;
+    }
+
+    private static System.Windows.Shapes.Path CreateMingCuteSettingsMenuIcon()
+    {
+        return new System.Windows.Shapes.Path
+        {
+            Width = 14,
+            Height = 14,
+            Stretch = System.Windows.Media.Stretch.Uniform,
+            Fill = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(0x58, 0xB6, 0xEA)),
+            Data = System.Windows.Media.Geometry.Parse(IconCacheService.MingCuteSettings4LinePathData)
+        };
+    }
+
+    private void OnSettingsWindowButtonClick(object sender, RoutedEventArgs e)
+    {
+        OpenSettingsDialog(0);
+    }
+
+    public void OpenSettingsDialog(int initialTabIndex = 0)
+    {
+        _suppressDeactivateHide = true;
+        try
+        {
+            var dialog = new SettingsWindow(
+                _settingsService,
+                _everythingService,
+                _boundsService,
+                () =>
+                {
+                    ApplyVisualSettings();
+                    PositionLikeStartMenu();
+                    UpdateEngineBadge();
+                    UpdateSortAndFilterBadges();
+                    TriggerSearch();
+                },
+                initialTabIndex
+            );
+            if (IsVisible)
+            {
+                dialog.Owner = this;
+            }
+
+            dialog.ShowDialog();
+        }
+        finally
+        {
+            _suppressDeactivateHide = false;
+            if (IsVisible)
+            {
+                ActivateWindowForcefully();
+                SearchTextBox.Focus();
+            }
+        }
     }
 
     private void OnOptionsMenuButtonClick(object sender, RoutedEventArgs e)
@@ -1097,6 +1753,13 @@ public partial class MainWindow : Window
         _suppressDeactivateHide = true;
 
         var menu = new ContextMenu();
+
+        var openSettingsItem = new MenuItem
+        {
+            Header = "打开设置中心 (自定义文件类型与筛选器)...",
+            Icon = CreateMingCuteSettingsMenuIcon()
+        };
+        openSettingsItem.Click += (_, _) => OpenSettingsDialog(0);
 
         var modeDirectItem = new MenuItem
         {
@@ -1146,6 +1809,51 @@ public partial class MainWindow : Window
         };
         engineBaidu.Click += (_, _) => SetSearchEngine(WebSearchEngine.Baidu);
 
+        var engineDuckDuckGo = new MenuItem
+        {
+            Header = "Web 搜索引擎：DuckDuckGo",
+            IsCheckable = true,
+            IsChecked = _settingsService.Current.SearchEngine == WebSearchEngine.DuckDuckGo
+        };
+        engineDuckDuckGo.Click += (_, _) => SetSearchEngine(WebSearchEngine.DuckDuckGo);
+
+        var initialDefaultAllItem = new MenuItem
+        {
+            Header = "打开主界面后搜索项：默认“全部”",
+            IsCheckable = true,
+            IsChecked = _settingsService.Current.InitialSearchItem == InitialSearchItemMode.DefaultAll
+        };
+        initialDefaultAllItem.Click += (_, _) =>
+        {
+            _settingsService.Current.InitialSearchItem = InitialSearchItemMode.DefaultAll;
+            _settingsService.Save();
+        };
+
+        var initialLastExitItem = new MenuItem
+        {
+            Header = "打开主界面后搜索项：上次退出时最后搜索项",
+            IsCheckable = true,
+            IsChecked = _settingsService.Current.InitialSearchItem == InitialSearchItemMode.LastSelectedOnExit
+        };
+        initialLastExitItem.Click += (_, _) =>
+        {
+            _settingsService.Current.InitialSearchItem = InitialSearchItemMode.LastSelectedOnExit;
+            _settingsService.Current.LastSearchCategory = _currentCategory;
+            _settingsService.Save();
+        };
+
+        var keepTaskbarItem = new MenuItem
+        {
+            Header = "全屏游戏/应用呼出搜索时保留底部任务栏",
+            IsCheckable = true,
+            IsChecked = _settingsService.Current.KeepTaskbarVisibleInFullscreen
+        };
+        keepTaskbarItem.Click += (_, _) =>
+        {
+            _settingsService.Current.KeepTaskbarVisibleInFullscreen = keepTaskbarItem.IsChecked;
+            _settingsService.Save();
+        };
+
         var autostartItem = new MenuItem
         {
             Header = "开机自动启动 EverythingonStart",
@@ -1158,15 +1866,26 @@ public partial class MainWindow : Window
         {
             Header = "退出 EverythingonStart"
         };
-        exitItem.Click += (_, _) => Application.Current.Shutdown();
+        exitItem.Click += (_, _) =>
+        {
+            SaveLastSearchCategory();
+            Application.Current.Shutdown();
+        };
 
+        menu.Items.Add(openSettingsItem);
+        menu.Items.Add(new Separator());
+        menu.Items.Add(initialDefaultAllItem);
+        menu.Items.Add(initialLastExitItem);
+        menu.Items.Add(new Separator());
         menu.Items.Add(modeDirectItem);
         menu.Items.Add(modeTypeItem);
         menu.Items.Add(new Separator());
         menu.Items.Add(engineBing);
         menu.Items.Add(engineGoogle);
         menu.Items.Add(engineBaidu);
+        menu.Items.Add(engineDuckDuckGo);
         menu.Items.Add(new Separator());
+        menu.Items.Add(keepTaskbarItem);
         menu.Items.Add(autostartItem);
         menu.Items.Add(new Separator());
         menu.Items.Add(exitItem);
@@ -1193,6 +1912,9 @@ public partial class MainWindow : Window
         if (_suppressDeactivateHide)
             return;
 
+        if (!_settingsService.Current.AutoHideOnDeactivate)
+            return;
+
         if (Environment.TickCount64 < _openingGraceUntilTick)
         {
             Dispatcher.BeginInvoke(() =>
@@ -1209,6 +1931,26 @@ public partial class MainWindow : Window
         HidePopup();
     }
 
+    private delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
+
+    [DllImport("user32.dll")]
+    private static extern bool EnumWindows(EnumWindowsProc lpEnumFunc, IntPtr lParam);
+
+    [DllImport("user32.dll")]
+    private static extern bool IsWindow(IntPtr hWnd);
+
+    [DllImport("user32.dll")]
+    private static extern bool IsWindowVisible(IntPtr hWnd);
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    private static extern unsafe int GetClassNameW(IntPtr hWnd, char* lpClassName, int nMaxCount);
+
+    [DllImport("user32.dll")]
+    private static extern int GetSystemMetrics(int nIndex);
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr GetWindow(IntPtr hWnd, uint uCmd);
+
     [DllImport("user32.dll")]
     private static extern void keybd_event(byte bVk, byte bScan, uint dwFlags, UIntPtr dwExtraInfo);
 
@@ -1219,9 +1961,9 @@ public partial class MainWindow : Window
     private static extern bool PostMessageW(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam);
 
     [ComImport]
-    [Guid("56FDF344-FD6D-11d0-958A-006097C9A090")]
+    [Guid("602D4995-B13A-429B-A66E-1935E44F4317")]
     [InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
-    private interface ITaskbarList
+    private interface ITaskbarList2
     {
         [PreserveSig]
         int HrInit();
@@ -1237,6 +1979,9 @@ public partial class MainWindow : Window
 
         [PreserveSig]
         int SetActiveAlt(IntPtr hwnd);
+
+        [PreserveSig]
+        int MarkFullscreenWindow(IntPtr hwnd, [MarshalAs(UnmanagedType.Bool)] bool fFullscreen);
     }
 
     [StructLayout(LayoutKind.Sequential)]

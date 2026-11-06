@@ -9,11 +9,13 @@ namespace EverythingonStart.Services;
 public sealed class ActionExecutorService
 {
     private readonly EverythingSearchService _everythingService;
+    private readonly AppSettingsService? _settingsService;
     private string? _cachedEverythingExePath;
 
-    public ActionExecutorService(EverythingSearchService everythingService)
+    public ActionExecutorService(EverythingSearchService everythingService, AppSettingsService? settingsService = null)
     {
         _everythingService = everythingService;
+        _settingsService = settingsService;
     }
 
     public bool ExecuteOpenInEverything(string searchText)
@@ -41,6 +43,10 @@ public sealed class ActionExecutorService
 
     public string? ResolveEverythingExecutablePath()
     {
+        var customPath = _settingsService?.Current.CustomEverythingExecutablePath?.Trim();
+        if (!string.IsNullOrWhiteSpace(customPath) && File.Exists(customPath))
+            return customPath;
+
         if (!string.IsNullOrWhiteSpace(_cachedEverythingExePath) && File.Exists(_cachedEverythingExePath))
             return _cachedEverythingExePath;
 
