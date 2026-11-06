@@ -14,6 +14,7 @@ public partial class SettingsWindow : Window
     private readonly StartMenuBoundsService _boundsService;
     private readonly Action _onSettingsApplied;
     private readonly AppThemeService _themeService;
+    private readonly WindowBackdropService _backdropService;
     private bool _isLoading;
 
     public SettingsWindow(
@@ -32,6 +33,7 @@ public partial class SettingsWindow : Window
         _themeService = AppThemeService.GetOrCreate(_settingsService);
         InitializeComponent();
         _themeService.RegisterWindow(this);
+        _backdropService = new WindowBackdropService(this, SettingsGaussianBackdrop, _settingsService);
         LoadFromSettings();
 
         switch (initialTabIndex)
@@ -115,6 +117,10 @@ public partial class SettingsWindow : Window
         ChkEnablePopupAnim.IsChecked = cur.EnablePopupAnimation;
         CmbThemeMode.SelectedIndex = Enum.IsDefined(cur.ThemeMode) ? (int)cur.ThemeMode : (int)AppThemeMode.Dark;
         ChkUseSystemAccentColor.IsChecked = cur.UseSystemAccentColor;
+        ChkEnableGaussianBlur.IsChecked = cur.EnableGaussianBlur;
+        SldGaussianBlurRadius.Value = Math.Clamp(cur.GaussianBlurRadius, 6, 40);
+        TxtGaussianBlurRadiusVal.Text = $"{(int)SldGaussianBlurRadius.Value}";
+        SldGaussianBlurRadius.IsEnabled = cur.EnableGaussianBlur;
 
         ChkAutostart.IsChecked = _settingsService.IsAutostartEnabled();
         TxtInstanceName.Text = cur.EverythingInstanceName;
@@ -311,6 +317,8 @@ public partial class SettingsWindow : Window
             TxtManualScaleVal.Text = $"{(int)SldManualScale.Value}%";
         else if (ReferenceEquals(sender, SldWindowOpacity) && TxtWindowOpacityVal != null)
             TxtWindowOpacityVal.Text = $"{(int)SldWindowOpacity.Value}%";
+        else if (ReferenceEquals(sender, SldGaussianBlurRadius) && TxtGaussianBlurRadiusVal != null)
+            TxtGaussianBlurRadiusVal.Text = $"{(int)SldGaussianBlurRadius.Value}";
     }
 
     private void OnReprobeStartMenuSizeClick(object sender, RoutedEventArgs e)
@@ -421,6 +429,7 @@ public partial class SettingsWindow : Window
         cur.ManualUiScale = Math.Round(SldManualScale.Value / 100.0, 2);
         cur.WindowOpacityPercent = Math.Round(SldWindowOpacity.Value);
         cur.EnablePopupAnimation = ChkEnablePopupAnim.IsChecked == true;
+        ApplyGaussianBlurSelections();
 
         var newInstanceName = TxtInstanceName.Text.Trim();
         bool instanceChanged = !string.Equals(cur.EverythingInstanceName, newInstanceName, StringComparison.Ordinal);
@@ -444,6 +453,18 @@ public partial class SettingsWindow : Window
     {
         _settingsService.Current.ThemeMode = (AppThemeMode)Math.Clamp(CmbThemeMode.SelectedIndex, 0, 2);
         _settingsService.Current.UseSystemAccentColor = ChkUseSystemAccentColor.IsChecked == true;
+    }
+
+    private void ApplyGaussianBlurSelections()
+    {
+        _settingsService.Current.EnableGaussianBlur = ChkEnableGaussianBlur.IsChecked == true;
+        _settingsService.Current.GaussianBlurRadius = (int)Math.Clamp(Math.Round(SldGaussianBlurRadius.Value), 6, 40);
+    }
+
+    private void OnGaussianBlurOptionChanged(object sender, RoutedEventArgs e)
+    {
+        if (!_isLoading && SldGaussianBlurRadius != null)
+            SldGaussianBlurRadius.IsEnabled = ChkEnableGaussianBlur.IsChecked == true;
     }
 
     private void OnTitleBarMouseLeftButtonDown(object sender, MouseButtonEventArgs e)

@@ -99,6 +99,7 @@ public sealed class SearchResultItem : INotifyPropertyChanged
     public required string Subtitle { get; init; }
     public required string FullPath { get; init; }
     public string DirectoryPath { get; init; } = string.Empty;
+    public string WebSearchQuery { get; init; } = string.Empty;
     public required SearchResultKind Kind { get; init; }
     public long SizeBytes { get; init; } = -1;
     public DateTime? DateModified { get; init; }

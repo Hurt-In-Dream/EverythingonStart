@@ -1,0 +1,260 @@
+using System.Collections;
+using System.Collections.ObjectModel;
+using System.IO;
+using System.Net;
+using System.Net.Http;
+using System.Text;
+using System.Reflection;
+using System.Runtime.CompilerServices;
+using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Media;
+using System.Windows.Media.Imaging;
+using System.Windows.Threading;
+using System.Xml.Linq;
+using EverythingonStart;
+using EverythingonStart.Models;
+using EverythingonStart.Services;
+
+internal static class Program
+{
+    private const BindingFlags Private = BindingFlags.Instance | BindingFlags.NonPublic;
+    private static int _checks, _failed;
+    [STAThread]
+    private static int Main(string[] args)
+    {
+        var app = new Application { ShutdownMode = ShutdownMode.OnExplicitShutdown };
+        var settings = (AppSettingsService)RuntimeHelpers.GetUninitializedObject(typeof(AppSettingsService));
+        typeof(AppSettingsService).GetProperty("Current")!.SetValue(settings, new AppSettings());
+        typeof(AppSettingsService).GetField("_settingsFilePath", Private)!.SetValue(settings, Path.Combine(args[0], "isolated-settings.json"));
+        using var everything = new EverythingSearchService(settings.Current.EverythingInstanceName, settings);
+        var suggestions = new WebSuggestionService(settings);
+        var icons = new IconCacheService();
+        var main = new MainWindow(settings, everything, new StartMenuIndexService(), suggestions, icons,
+            new ActionExecutorService(everything, settings), new StartMenuBoundsService(settings))
+            { ShowActivated = false, Left = -10000, Top = -10000 };
+        var assembly = typeof(MainWindow).Assembly;
+        var serviceType = assembly.GetType("EverythingonStart.Services.WebPreviewService");
+        if (serviceType == null)
+        {
+            var item = suggestions.CreateDirectWebSearchItem("qq"); icons.PopulateIconsAsync(item);
+            var entries = (ObservableCollection<SearchListEntry>)typeof(MainWindow).GetField("_entries", Private)!.GetValue(main)!;
+            entries.Clear(); entries.Add(SearchListEntry.CreateHeader("搜索 Web", "实时联想")); entries.Add(SearchListEntry.CreateItem(item));
+            ((ListBox)main.FindName("ResultsListBox")).SelectedIndex = 1;
+            main.Show(); Pump();
+            Console.WriteLine("BASELINE: right-pane=url-details; webpage-results=absent; web-icon=custom-magnifier");
+            Check("web-query-preserved", typeof(SearchResultItem).GetProperty("WebSearchQuery") != null);
+            Check("webpage-preview-service", serviceType != null);
+            Check("right-side-web-results-panel", main.FindName("WebResultsPreviewPanel") != null);
+            Check("authentic-mingcute-search-icon", typeof(IconCacheService).GetField("MingCuteSearchLinePathData") != null);
+            Capture(main, Path.Combine(args[0], "baseline.png"));
+            main.Close(); (app.Resources["AppThemeService"] as IDisposable)?.Dispose();
+            Console.WriteLine($"Summary: {_checks - _failed}/{_checks} passed"); app.Shutdown(); return 1;
+        }
+        object Property(object target, string name) => target.GetType().GetProperty(name)!.GetValue(target)!;
+        object[] Items(object value) => ((IEnumerable)value).Cast<object>().ToArray();
+        object[] Parse(string html, WebSearchEngine engine) => Items(serviceType.GetMethod("ParseResults")!.Invoke(null, [html, engine])!);
+        object Service(HttpClient client) => Activator.CreateInstance(serviceType, client)!;
+        object Fetch(object service, string query, WebSearchEngine engine, CancellationToken token = default)
+        {
+            var task = (Task)serviceType.GetMethod("GetResultsAsync")!.Invoke(service, [query, engine, token])!;
+            task.GetAwaiter().GetResult(); return task.GetType().GetProperty("Result")!.GetValue(task)!;
+        }
+        string Status(object response) => Property(response, "Status").ToString()!;
+        Check("direct-query-preserved", (string)Property(suggestions.CreateDirectWebSearchItem("ace反作弊"), "WebSearchQuery") == "ace反作弊");
+        using (var client = new HttpClient(new FakeHandler((_, _) => Task.FromResult(Response("[\"qq\",[\"qq邮箱\",\"qq音乐\"]]", "application/json")))))
+        {
+            typeof(WebSuggestionService).GetField("_httpClient", Private)!.SetValue(suggestions, client);
+            var items = suggestions.GetWebSuggestionsAsync("qq", 3, default).GetAwaiter().GetResult();
+            Check("suggestion-query-preserved", items.Any(item => (string)Property(item, "WebSearchQuery") == "qq邮箱"));
+        }
+        string html = BingFixture();
+        var parsed = Parse(html, WebSearchEngine.Bing);
+        Check("bing-title-site-snippet", parsed.Length == 2 && (string)Property(parsed[0], "SiteName") == "腾讯QQ邮箱"
+            && ((string)Property(parsed[0], "Title")).Contains("QQ邮箱") && ((string)Property(parsed[0], "Summary")).Contains("接收与发送"));
+        Check("bing-sitelinks-and-dedup", Items(Property(parsed[0], "SiteLinks")).Length == 4);
+        Check("html-entities-not-markup", !((string)Property(parsed[0], "Title")).Contains('<') && ((string)Property(parsed[0], "Title")).Contains('&'));
+        Check("scripts-and-ad-results-excluded", parsed.All(item => !((string)Property(item, "Title")).Contains("广告") && !((string)Property(item, "Summary")).Contains("alert")));
+        string google = "<div class='g'><a href='/url?q=https%3A%2F%2Fexample.com%2Fdocs'><h3>Google 文档</h3></a><div class='VuuXrf'>Example</div><div class='VwiC3b'>文档摘要</div></div>";
+        var g = Parse(google, WebSearchEngine.Google);
+        Check("google-results-and-redirect", g.Length == 1 && (string)Property(g[0], "Url") == "https://example.com/docs" && (string)Property(g[0], "Summary") == "文档摘要");
+        var baidu = Parse("<div class='result c-container'><h3><a href='https://example.com/baidu'>百度结果</a></h3><div class='c-abstract'>百度摘要</div><span class='c-showurl'>example.com</span></div>", WebSearchEngine.Baidu);
+        Check("baidu-results", baidu.Length == 1 && (string)Property(baidu[0], "Summary") == "百度摘要");
+        var duck = Parse("<div class='result'><h2><a class='result__a' href='//duckduckgo.com/l/?uddg=https%3A%2F%2Fexample.com%2Fduck'>Duck 结果</a></h2><a class='result__snippet'>Duck 摘要</a><a class='result__url'>example.com/duck</a></div>", WebSearchEngine.DuckDuckGo);
+        Check("duckduckgo-results-and-redirect", duck.Length == 1 && (string)Property(duck[0], "Url") == "https://example.com/duck");
+        string encoded = "a1" + Convert.ToBase64String(Encoding.UTF8.GetBytes("https://example.com/bing")).TrimEnd('=').Replace('+', '-').Replace('/', '_');
+        var redirect = Parse($"<li class='b_algo'><h2><a href='https://www.bing.com/ck/a?u={encoded}'>跳转</a></h2></li>", WebSearchEngine.Bing);
+        Check("bing-redirect-decoded", redirect.Length == 1 && (string)Property(redirect[0], "Url") == "https://example.com/bing");
+        Check("unsafe-and-empty-hrefs-rejected", Parse("<li class='b_algo'><h2><a href='javascript:alert(1)'>恶意</a></h2></li><li class='b_algo'><h2><a href='file:///C:/private'>本地</a></h2></li><li class='b_algo'><h2><a href=''>空</a></h2></li>", WebSearchEngine.Bing).Length == 0);
+        Check("credentialed-links-rejected", Parse("<li class='b_algo'><h2><a href='https://user:password@example.com/'>认证</a></h2></li>", WebSearchEngine.Bing).Length == 0);
+        Check("malformed-html-safe", Parse("<li class=b_algo><h2><a href=https://example.com>缺失结束标记", WebSearchEngine.Bing).Length == 1);
+        Check("result-limit", Parse(string.Concat(Enumerable.Range(0, 20).Select(i => $"<li class='b_algo'><h2><a href='https://example.com/{i}'>结果{i}</a></h2></li>")), WebSearchEngine.Bing).Length == 8);
+        foreach (var engine in Enum.GetValues<WebSearchEngine>())
+        {
+            string url = (string)serviceType.GetMethod("GetSearchUrl")!.Invoke(null, ["qq 邮箱&音乐", engine])!;
+            settings.Current.SearchEngine = engine;
+            Check($"url-follows-engine-{engine}", url == settings.BuildWebSearchUrl("qq 邮箱&音乐"));
+        }
+        settings.Current.SearchEngine = WebSearchEngine.Bing;
+        using (var client = new HttpClient(new FakeHandler((_, _) => Task.FromResult(Response(html)))))
+        {
+            var handler = (FakeHandler)typeof(HttpMessageInvoker).GetField("_handler", Private)!.GetValue(client)!;
+            var service = Service(client);
+            var first = Fetch(service, "qq", WebSearchEngine.Bing);
+            var second = Fetch(service, "qq", WebSearchEngine.Bing);
+            Check("fetch-and-memory-cache", Status(first) == "Ready" && Status(second) == "Ready" && handler.Count == 1);
+            Check("only-search-engine-requested", handler.Urls.All(url => new Uri(url).Host == "www.bing.com"));
+            serviceType.GetMethod("ClearCache")!.Invoke(service, null); Fetch(service, "qq", WebSearchEngine.Bing);
+            Check("retry-clears-cache", handler.Count == 2);
+            using var cancelled = new CancellationTokenSource(); cancelled.Cancel();
+            bool observedCancellation = false;
+            try { Fetch(service, "cancel", WebSearchEngine.Bing, cancelled.Token); } catch (OperationCanceledException) { observedCancellation = true; }
+            Check("caller-cancellation-preserved", observedCancellation && handler.Count == 2);
+            ((IDisposable)service).Dispose();
+        }
+        foreach (var code in new[] { HttpStatusCode.Forbidden, HttpStatusCode.TooManyRequests, HttpStatusCode.InternalServerError })
+        {
+            using var client = new HttpClient(new FakeHandler((_, _) => Task.FromResult(new HttpResponseMessage(code))));
+            var response = Fetch(Service(client), "status", WebSearchEngine.Bing);
+            Check($"http-status-{(int)code}-fallback", Status(response) == (code == HttpStatusCode.Forbidden ? "NeedsBrowser" : "Unavailable") && Items(Property(response, "Results")).Length == 0);
+        }
+        using (var client = new HttpClient(new FakeHandler((_, _) => Task.FromResult(Response("<form id='captcha'>请输入验证码</form>")))))
+            Check("captcha-not-bypassed", Status(Fetch(Service(client), "captcha", WebSearchEngine.Bing)) == "NeedsBrowser");
+        using (var client = new HttpClient(new FakeHandler((_, _) => Task.FromResult(Response("<html><body>无可解析结果</body></html>")))))
+            Check("no-results-not-fabricated", Status(Fetch(Service(client), "empty", WebSearchEngine.Bing)) == "NoResults");
+        using (var client = new HttpClient(new FakeHandler((_, _) => Task.FromResult(Response(new string('x', 2_000_001))))))
+            Check("oversized-page-bounded", Status(Fetch(Service(client), "large", WebSearchEngine.Bing)) == "Unavailable");
+        using (var client = new HttpClient(new FakeHandler(async (_, token) => { await Task.Delay(2000, token).ConfigureAwait(false); return Response(html); })) { Timeout = TimeSpan.FromMilliseconds(50) })
+            Check("timeout-fallback", ((string)Property(Fetch(Service(client), "timeout", WebSearchEngine.Bing), "Message")).Contains("超时"));
+        foreach (var glyph in new[] { ("search-line", "MingCuteSearchLineGeometry"), ("earth-2-line", "MingCuteEarth2LineGeometry"), ("external-link-line", "MingCuteExternalLinkLineGeometry") })
+        {
+            var svg = XDocument.Load(Path.Combine(args[0], "Icons", $"mingcute-{glyph.Item1}.svg"));
+            string path = svg.Root!.Elements().First().Attribute("d")!.Value;
+            var source = Geometry.Parse("F1 " + path);
+            var rendered = (Geometry)typeof(IconCacheService).GetProperty(glyph.Item2)!.GetValue(null)!;
+            Check($"mingcute-authentic-{glyph.Item1}", rendered.IsFrozen && rendered.Bounds == source.Bounds && Math.Abs(rendered.GetArea() - source.GetArea()) < 0.001);
+        }
+        var iconItem = suggestions.CreateDirectWebSearchItem("icon"); icons.PopulateIconsAsync(iconItem);
+        Check("web-items-use-mingcute-vector", iconItem.SmallIcon is DrawingImage { IsFrozen: true } && ReferenceEquals(iconItem.SmallIcon, iconItem.LargeIcon));
+
+        using var uiClient = new HttpClient(new FakeHandler(async (request, token) =>
+        {
+            string query = Uri.UnescapeDataString(request.RequestUri!.Query);
+            if (query.Contains("slow")) await Task.Delay(600, token).ConfigureAwait(false);
+            return Response(query.Contains("qq音乐") ? BingFixture("QQ音乐", "https://y.qq.com/") : html);
+        }));
+        var uiService = Service(uiClient);
+        ((IDisposable)typeof(MainWindow).GetField("_webPreviewService", Private)!.GetValue(main)!).Dispose();
+        typeof(MainWindow).GetField("_webPreviewService", Private)!.SetValue(main, uiService);
+        string? openedUrl = null;
+        typeof(MainWindow).GetField("_openWebPreview", Private)!.SetValue(main, (Func<string, bool>)(url => { openedUrl = url; return false; }));
+        var rows = (ObservableCollection<SearchListEntry>)typeof(MainWindow).GetField("_entries", Private)!.GetValue(main)!;
+        var list = (ListBox)main.FindName("ResultsListBox");
+        // Configure a screenshot-only Web tab before loading; don't invoke real local/suggestion searches.
+        typeof(MainWindow).GetField("_currentCategory", Private)!.SetValue(main, SearchCategory.Web);
+        ((RadioButton)main.FindName("TabWeb")).IsChecked = true;
+        ((TextBox)main.FindName("SearchTextBox")).Text = "qq";
+        ((DispatcherTimer)typeof(MainWindow).GetField("_searchDebounceTimer", Private)!.GetValue(main)!).Stop();
+        var fileItem = new SearchResultItem { Title = "本地文件", Subtitle = "文件详情", FullPath = "C:\\test.txt", Kind = SearchResultKind.File };
+        var qq = suggestions.CreateDirectWebSearchItem("qq"); var music = suggestions.CreateDirectWebSearchItem("qq音乐"); var slow = suggestions.CreateDirectWebSearchItem("slow");
+        foreach (var item in new[] { qq, music, slow }) icons.PopulateIconsAsync(item);
+        rows.Clear(); rows.Add(SearchListEntry.CreateItem(fileItem)); rows.Add(SearchListEntry.CreateItem(qq)); rows.Add(SearchListEntry.CreateItem(music)); rows.Add(SearchListEntry.CreateItem(slow));
+        list.SelectedIndex = 0; main.Show(); Pump();
+        Check("file-details-preserved", ((UIElement)main.FindName("FileDetailsPreviewPanel")).Visibility == Visibility.Visible && ((TextBlock)main.FindName("PreviewTitleText")).Text == "本地文件");
+        list.SelectedIndex = 1;
+        Check("web-selection-replaces-url-card", ((UIElement)main.FindName("WebResultsPreviewPanel")).Visibility == Visibility.Visible && ((UIElement)main.FindName("FileDetailsPreviewPanel")).Visibility == Visibility.Collapsed);
+        PumpUntil(() => ((ItemsControl)main.FindName("WebPreviewResultsList")).Items.Count == 2);
+        Check("web-result-cards-visible", ((ItemsControl)main.FindName("WebPreviewResultsList")).Items.Count == 2 && ((TextBlock)main.FindName("WebPreviewMessageText")).Visibility == Visibility.Collapsed);
+        list.SelectedIndex = 3; PumpFor(300); list.SelectedIndex = 2;
+        PumpUntil(() => ((ItemsControl)main.FindName("WebPreviewResultsList")).Items.Cast<object>().FirstOrDefault() is { } value && ((string)Property(value, "Title")).Contains("QQ音乐"));
+        PumpFor(650);
+        Check("old-request-cannot-overwrite-new-query", ((string)Property(((ItemsControl)main.FindName("WebPreviewResultsList")).Items[0], "Title")).Contains("QQ音乐"));
+        var result = ((ItemsControl)main.FindName("WebPreviewResultsList")).Items[0];
+        var button = new Button { Tag = result };
+        typeof(MainWindow).GetMethod("OnWebPreviewLinkClick", Private)!.Invoke(main, [button, new RoutedEventArgs()]);
+        Check("title-click-opens-result-not-search-url", openedUrl == "https://y.qq.com/");
+        openedUrl = null;
+        var linkType = assembly.GetType("EverythingonStart.Models.WebPreviewLink")!;
+        button.Tag = Activator.CreateInstance(linkType, "unsafe", "javascript:alert(1)");
+        typeof(MainWindow).GetMethod("OnWebPreviewLinkClick", Private)!.Invoke(main, [button, new RoutedEventArgs()]);
+        Check("click-rejects-unsafe-url", openedUrl == null);
+        typeof(MainWindow).GetMethod("OnWebPreviewBrowserClick", Private)!.Invoke(main, [button, new RoutedEventArgs()]);
+        Check("browser-fallback-searches-selected-query", openedUrl == settings.BuildWebSearchUrl("qq音乐"));
+        list.SelectedIndex = 0;
+        Check("switch-to-file-clears-web-mode", ((UIElement)main.FindName("WebResultsPreviewPanel")).Visibility == Visibility.Collapsed && ((UIElement)main.FindName("FileDetailsPreviewPanel")).Visibility == Visibility.Visible);
+        list.SelectedIndex = 3; main.Hide(); PumpFor(400);
+        Check("hidden-window-cancels-preview", typeof(MainWindow).GetField("_webPreviewCts", Private)!.GetValue(main) == null);
+        main.Show(); list.SelectedIndex = -1; Pump();
+        Check("cleared-selection-not-stale", typeof(MainWindow).GetField("_selectedItem", Private)!.GetValue(main) == null && ((UIElement)main.FindName("WebResultsPreviewPanel")).Visibility == Visibility.Collapsed);
+        rows.Clear(); rows.Add(SearchListEntry.CreateHeader("搜索 Web", "实时联想")); rows.Add(SearchListEntry.CreateItem(qq));
+        foreach (string query in new[] { "qq邮箱", "qq音乐", "qq空间", "qq浏览器", "qq官网下载", "qq邮箱登录" })
+        {
+            var suggestion = new SearchResultItem { Title = query, Subtitle = "Web 搜索建议 · Bing", FullPath = settings.BuildWebSearchUrl(query), Kind = SearchResultKind.WebSuggestion };
+            typeof(SearchResultItem).GetProperty("WebSearchQuery")!.SetValue(suggestion, query);
+            icons.PopulateIconsAsync(suggestion); rows.Add(SearchListEntry.CreateItem(suggestion));
+        }
+        list.SelectedIndex = 1; PumpUntil(() => ((ItemsControl)main.FindName("WebPreviewResultsList")).Items.Count == 2);
+        Capture(main, Path.Combine(args[0], "web-preview.png"));
+        main.Close();
+        Check("preview-service-disposed-with-window", (bool)serviceType.GetField("_disposed", Private)!.GetValue(uiService)!);
+        if (args.Contains("--live-smoke"))
+        {
+            var live = Activator.CreateInstance(serviceType, new object?[] { null })!;
+            var response = Fetch(live, "Everything SDK", WebSearchEngine.Bing);
+            var actual = Items(Property(response, "Results"));
+            Console.WriteLine($"LIVE: status={Status(response)}; results={actual.Length}");
+            foreach (var entry in actual.Take(3)) Console.WriteLine($"LIVE RESULT: {Property(entry, "Title")} | {Property(entry, "Url")}");
+            Check("live-bing-real-web-results", Status(response) == "Ready" && actual.Length > 0);
+            ((IDisposable)live).Dispose();
+        }
+        (app.Resources["AppThemeService"] as IDisposable)?.Dispose();
+        Console.WriteLine($"Summary: {_checks - _failed}/{_checks} passed"); app.Shutdown(); return _failed == 0 ? 0 : 1;
+    }
+    private static void Check(string name, bool pass)
+    {
+        _checks++; if (!pass) _failed++; Console.WriteLine($"{(pass ? "PASS" : "FAIL")} {name}");
+    }
+    private static void Pump()
+    {
+        var frame = new DispatcherFrame();
+        Application.Current.Dispatcher.BeginInvoke(DispatcherPriority.ApplicationIdle, new Action(() => frame.Continue = false));
+        Dispatcher.PushFrame(frame); foreach (Window window in Application.Current.Windows) window.UpdateLayout();
+    }
+    private static void Capture(Window window, string path)
+    {
+        window.UpdateLayout();
+        var bitmap = new RenderTargetBitmap((int)Math.Ceiling(window.ActualWidth), (int)Math.Ceiling(window.ActualHeight), 96, 96, PixelFormats.Pbgra32);
+        bitmap.Render(window);
+        var encoder = new PngBitmapEncoder(); encoder.Frames.Add(BitmapFrame.Create(bitmap));
+        using var stream = File.Create(path); encoder.Save(stream); Console.WriteLine("Screenshot: " + path);
+    }
+    private static HttpResponseMessage Response(string text, string media = "text/html") => new(HttpStatusCode.OK) { Content = new StringContent(text, Encoding.UTF8, media) };
+    private static string BingFixture(string title = "QQ邮箱", string url = "https://mail.qq.com/") => $"""
+        <html><script>alert('never-execute')</script><ul>
+        <li class='b_ad'><h2><a href='https://ad.example.com/'>广告</a></h2></li>
+        <li class='b_algo'><div class='tptt'>腾讯QQ邮箱</div><cite>{url}</cite>
+        <h2><a href='{url}'>{title} - 登录 &amp; 帮助</a></h2><div class='b_caption'><p>支持邮件接收与发送，提供快速、安全的网页体验。</p></div>
+        <div class='b_sitelinks'><a href='{url}login'>立即登录</a><a href='{url}guide'>使用帮助</a><a href='{url}security'>安全中心</a><a href='{url}mobile'>移动版</a><a href='{url}login'>重复项</a></div></li>
+        <li class='b_algo'><h2><a href='{url}'>{title}重复</a></h2></li>
+        <li class='b_algo'><div class='tptt'>腾讯</div><h2><a href='https://www.qq.com/'>腾讯网 - 信息与服务</a></h2><div class='b_caption'><p>腾讯网站的新闻、产品与服务入口。</p></div></li>
+        </ul></html>
+        """;
+    private static void PumpFor(int milliseconds) => PumpUntil(() => false, milliseconds, false);
+    private static void PumpUntil(Func<bool> predicate, int timeout = 4000, bool require = true)
+    {
+        var frame = new DispatcherFrame(); var start = DateTime.UtcNow;
+        var timer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(10) };
+        timer.Tick += (_, _) => { if (predicate() || (DateTime.UtcNow - start).TotalMilliseconds >= timeout) frame.Continue = false; };
+        timer.Start(); Dispatcher.PushFrame(frame); timer.Stop(); Pump();
+        if (require && !predicate()) throw new TimeoutException("Owned UI preview did not reach its expected state.");
+    }
+    private sealed class FakeHandler(Func<HttpRequestMessage, CancellationToken, Task<HttpResponseMessage>> reply) : HttpMessageHandler
+    {
+        public int Count;
+        public List<string> Urls = [];
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken token)
+        {
+            Interlocked.Increment(ref Count); lock (Urls) Urls.Add(request.RequestUri!.AbsoluteUri); return reply(request, token);
+        }
+    }
+}

@@ -30,6 +30,7 @@ public sealed class WebSuggestionService
             Title = $"{trimmed} - 查看更多搜索结果",
             Subtitle = $"使用 {_settingsService.Current.SearchEngine} 搜索 \"{trimmed}\"",
             FullPath = url,
+            WebSearchQuery = trimmed,
             DirectoryPath = "Web 搜索",
             Kind = SearchResultKind.WebDirect
         };
@@ -71,6 +72,7 @@ public sealed class WebSuggestionService
                     Title = text,
                     Subtitle = $"Web 搜索建议 · {_settingsService.Current.SearchEngine}",
                     FullPath = _settingsService.BuildWebSearchUrl(text),
+                    WebSearchQuery = text,
                     DirectoryPath = "Web 搜索建议",
                     Kind = SearchResultKind.WebSuggestion
                 }

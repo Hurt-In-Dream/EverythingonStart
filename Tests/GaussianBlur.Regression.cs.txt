@@ -1,0 +1,274 @@
+using System.IO;
+using System.ComponentModel;
+using System.Reflection;
+using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
+using System.Text.Json;
+using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Media;
+using System.Windows.Media.Effects;
+using System.Windows.Media.Imaging;
+using System.Windows.Threading;
+using EverythingonStart;
+using EverythingonStart.Services;
+
+internal static class Program
+{
+    private static int _checks, _failures;
+    private const BindingFlags Private = BindingFlags.Instance | BindingFlags.NonPublic;
+
+    [STAThread]
+    private static int Main(string[] args)
+    {
+        var app = new Application { ShutdownMode = ShutdownMode.OnExplicitShutdown };
+        // No reads or writes of the user's application settings or autostart registry.
+        var settings = (AppSettingsService)RuntimeHelpers.GetUninitializedObject(typeof(AppSettingsService));
+        typeof(AppSettingsService).GetProperty("Current")!.SetValue(settings, new AppSettings());
+        string config = Path.Combine(args[0], "isolated-settings.json");
+        typeof(AppSettingsService).GetField("_settingsFilePath", Private)!.SetValue(settings, config);
+        using var everything = new EverythingSearchService(settings.Current.EverythingInstanceName, settings);
+        var bounds = new StartMenuBoundsService(settings);
+        var main = new MainWindow(settings, everything, new StartMenuIndexService(), new WebSuggestionService(settings),
+            new IconCacheService(), new ActionExecutorService(everything, settings), bounds)
+            { Left = -10000, Top = -10000, ShowActivated = false };
+        var window = new SettingsWindow(settings, everything, bounds, () => { }, 3)
+            { Left = -10000, Top = -10000, WindowStartupLocation = WindowStartupLocation.Manual,
+              ShowActivated = false, ShowInTaskbar = false };
+        var enabled = typeof(AppSettings).GetProperty("EnableGaussianBlur");
+        var radius = typeof(AppSettings).GetProperty("GaussianBlurRadius");
+        var controlType = typeof(AppSettings).Assembly.GetType("EverythingonStart.Controls.GaussianBlurBackdrop");
+        if (enabled == null || radius == null || controlType == null)
+        {
+            main.Show(); window.Show(); Pump();
+            Console.WriteLine("BASELINE: gaussian-setting=absent; gaussian-radius=absent; backdrop-control=absent; settings-toggle=absent");
+            Check("persisted-gaussian-option", enabled != null);
+            Check("persisted-gaussian-radius", radius != null);
+            Check("background-only-gaussian-control", controlType != null);
+            Check("settings-gaussian-toggle", window.FindName("ChkEnableGaussianBlur") != null);
+            Capture(window, Path.Combine(args[0], "baseline.png"));
+            window.Close(); main.Close();
+            (app.Resources["AppThemeService"] as IDisposable)?.Dispose();
+            Console.WriteLine($"Summary: {_checks - _failures}/{_checks} passed");
+            app.Shutdown(); return 1;
+        }
+        bool Enabled() => (bool)enabled.GetValue(settings.Current)!;
+        void Enable(bool value) => enabled.SetValue(settings.Current, value);
+        void Radius(int value) => radius.SetValue(settings.Current, value);
+        var old = JsonSerializer.Deserialize<AppSettings>("{\"Version\":3}")!;
+        Check("default-off-radius-20", !Enabled() && (int)radius.GetValue(settings.Current)! == 20);
+        Check("old-json-keeps-blur-off", !(bool)enabled.GetValue(old)! && (int)radius.GetValue(old)! == 20);
+        var toggle = (CheckBox)window.FindName("ChkEnableGaussianBlur");
+        var slider = (Slider)window.FindName("SldGaussianBlurRadius");
+        Check("settings-controls-load", toggle.IsChecked == false && slider.Minimum == 6 && slider.Maximum == 40 && slider.Value == 20 && !slider.IsEnabled);
+        toggle.IsChecked = true; slider.Value = 26;
+        Check("unsaved-option-does-not-apply", !Enabled() && (int)radius.GetValue(settings.Current)! == 20);
+        Check("slider-option-and-label", slider.IsEnabled && ((TextBlock)window.FindName("TxtGaussianBlurRadiusVal")).Text == "26");
+        typeof(SettingsWindow).GetMethod("ApplyGaussianBlurSelections", Private)!.Invoke(window, null);
+        Check("ui-selections-map-to-settings", Enabled() && (int)radius.GetValue(settings.Current)! == 26);
+        Enable(false); Radius(20);
+        toggle.IsChecked = false; slider.Value = 20;
+
+        var mainController = typeof(MainWindow).GetField("_backdropService", Private)!.GetValue(main)!;
+        var settingsController = typeof(SettingsWindow).GetField("_backdropService", Private)!.GetValue(window)!;
+        var mainBackdrop = (FrameworkElement)main.FindName("MainGaussianBackdrop");
+        var settingsBackdrop = (FrameworkElement)window.FindName("SettingsGaussianBackdrop");
+        var pattern = Checkerboard();
+        int mainCaptures = 0, settingsCaptures = 0;
+        bool ownWindowVisibleDuringCapture = false;
+        bool highContrast = false;
+        Rect mainRegion = Rect.Empty;
+        Func<Rect, BitmapSource?> mainReader = region =>
+        {
+            mainCaptures++; mainRegion = region;
+            ownWindowVisibleDuringCapture |= IsWindowVisible(new System.Windows.Interop.WindowInteropHelper(main).Handle);
+            return pattern;
+        };
+        Func<Rect, BitmapSource?> settingsReader = region =>
+        {
+            settingsCaptures++;
+            ownWindowVisibleDuringCapture |= IsWindowVisible(new System.Windows.Interop.WindowInteropHelper(window).Handle);
+            return pattern;
+        };
+        void Inject(object controller, Func<Rect, BitmapSource?> reader)
+        {
+            controller.GetType().GetField("_wallpaperReader", Private)!.SetValue(controller, reader);
+            controller.GetType().GetField("_highContrastReader", Private)!.SetValue(controller, (Func<bool>)(() => highContrast));
+        }
+        void Apply(object controller) => controller.GetType().GetMethod("ApplyCurrentSettings")!.Invoke(controller, null);
+        BitmapSource? Snapshot(object backdrop) => (BitmapSource?)controlType.GetProperty("Snapshot")!.GetValue(backdrop);
+        double Strength(object backdrop) => (double)controlType.GetProperty("BlurRadius")!.GetValue(backdrop)!;
+        Inject(mainController, mainReader); Inject(settingsController, settingsReader);
+        main.Show(); window.Show(); Pump();
+        Check("disabled-does-not-capture", mainCaptures == 0 && settingsCaptures == 0 && Snapshot(mainBackdrop) == null && Snapshot(settingsBackdrop) == null);
+        Capture(window, Path.Combine(args[0], "disabled.png"));
+        Enable(true); settings.Current.WindowOpacityPercent = 75;
+        toggle.IsChecked = true;
+        ((Slider)window.FindName("SldWindowOpacity")).Value = 75;
+        main.ApplyVisualSettings(); Apply(settingsController);
+        Check("visible-wallpaper-refresh-is-coalesced", mainCaptures == 0 && settingsCaptures == 0 && Snapshot(mainBackdrop) == null);
+        main.Hide(); window.Hide();
+        main.Show(); window.Show(); Pump();
+        Console.WriteLine($"WALLPAPER: main={mainCaptures}; settings={settingsCaptures}; main-region={mainRegion}");
+        Check("both-windows-capture-on-show", mainCaptures == 1 && settingsCaptures == 1);
+        Check("wallpaper-source-not-screen-capture", mainController.GetType().GetMethod("CaptureDesktopRegion", BindingFlags.Static | BindingFlags.NonPublic) == null);
+        Check("both-backgrounds-enabled", Snapshot(mainBackdrop)?.IsFrozen == true && Snapshot(settingsBackdrop)?.IsFrozen == true
+            && mainBackdrop.Visibility == Visibility.Visible && settingsBackdrop.Visibility == Visibility.Visible);
+        var location = mainBackdrop.PointToScreen(new Point());
+        var dpi = VisualTreeHelper.GetDpi(mainBackdrop);
+        Check("capture-region-matches-background", Math.Abs(mainRegion.X - location.X) <= 1 && Math.Abs(mainRegion.Y - location.Y) <= 1
+            && Math.Abs(mainRegion.Width - mainBackdrop.ActualWidth * dpi.DpiScaleX) <= 1
+            && Math.Abs(mainRegion.Height - mainBackdrop.ActualHeight * dpi.DpiScaleY) <= 1);
+        Check("backgrounds-ignore-input", !mainBackdrop.IsHitTestVisible && !mainBackdrop.Focusable && !settingsBackdrop.IsHitTestVisible && !settingsBackdrop.Focusable);
+        Check("foreground-content-not-blurred", mainBackdrop.Effect == null && ((Grid)main.FindName("RootContentGrid")).Effect == null
+            && main.Effect == null && window.Effect == null && ((TextBox)main.FindName("SearchTextBox")).Effect == null);
+        Check("opacity-setting-preserved", settings.Current.WindowOpacityPercent == 75
+            && Math.Abs((double)controlType.GetProperty("TintOpacity")!.GetValue(mainBackdrop)! - 0.75) < 0.001);
+        Capture(main, Path.Combine(args[0], "main-gaussian.png"));
+        Capture(window, Path.Combine(args[0], "settings-gaussian.png"));
+
+        int captured = mainCaptures;
+        Radius(38); main.ApplyVisualSettings();
+        Check("radius-updates-without-recapture", Strength(mainBackdrop) == 38 && mainCaptures == captured);
+        Radius(-10); main.ApplyVisualSettings();
+        Check("invalid-radius-clamped-low", Strength(mainBackdrop) == 6);
+        Radius(1000); main.ApplyVisualSettings();
+        Check("invalid-radius-clamped-high", Strength(mainBackdrop) == 40);
+        highContrast = true; Apply(mainController); Apply(settingsController);
+        Check("high-contrast-disables-background-only", Snapshot(mainBackdrop) == null && Snapshot(settingsBackdrop) == null && Enabled());
+        highContrast = false; Radius(20);
+        Inject(mainController, _ => null);
+        main.Hide(); main.Show(); Pump();
+        Check("unavailable-capture-falls-back", Snapshot(mainBackdrop) == null && main.IsVisible);
+        Inject(mainController, _ => throw new Win32Exception(5));
+        main.Hide(); main.Show(); Pump();
+        Check("capture-error-falls-back", Snapshot(mainBackdrop) == null && main.IsVisible);
+        Inject(mainController, mainReader);
+        main.Hide(); main.Show(); Pump();
+        Check("next-show-recovers", Snapshot(mainBackdrop) != null);
+        main.Hide(); window.Hide(); Pump();
+        Check("hidden-windows-clear-captured-pixels", Snapshot(mainBackdrop) == null && Snapshot(settingsBackdrop) == null);
+        Enable(false); main.ApplyVisualSettings(); Apply(settingsController);
+        Check("disable-restores-original-background", mainBackdrop.Visibility == Visibility.Collapsed && settingsBackdrop.Visibility == Visibility.Collapsed);
+
+        // Raster-test the actual Gaussian effect on a synthetic checkerboard, not the user's desktop.
+        var isolated = (FrameworkElement)Activator.CreateInstance(controlType)!;
+        isolated.Width = isolated.Height = 256;
+        controlType.GetProperty("TintOpacity")!.SetValue(isolated, 0.0);
+        controlType.GetProperty("BlurRadius")!.SetValue(isolated, 6.0);
+        controlType.GetMethod("SetSnapshot")!.Invoke(isolated, [pattern]);
+        isolated.Measure(new Size(256, 256)); isolated.Arrange(new Rect(0, 0, 256, 256)); isolated.UpdateLayout();
+        var weakBlur = Render(isolated);
+        controlType.GetProperty("BlurRadius")!.SetValue(isolated, 40.0);
+        var strongBlur = Render(isolated);
+        var image = (Image)((Grid)((Border)isolated).Child).Children[0];
+        Check("actual-kernel-is-gaussian", image.Effect is BlurEffect { KernelType: KernelType.Gaussian, Radius: 40 });
+        double sourceVariance = Variance(pattern), weakVariance = Variance(weakBlur), strongVariance = Variance(strongBlur);
+        Console.WriteLine($"PIXELS: sharp-variance={sourceVariance:F2}; radius6={weakVariance:F2}; radius40={strongVariance:F2}");
+        Check("gaussian-softens-real-rendered-pixels", strongVariance < sourceVariance * 0.25);
+        Check("larger-radius-softens-more", strongVariance < weakVariance * 0.5);
+        var overlay = new Grid { Width = 256, Height = 256 };
+        overlay.Children.Add(isolated);
+        overlay.Children.Add(new Border { Width = 2, Height = 128, Background = Brushes.Black, HorizontalAlignment = HorizontalAlignment.Center });
+        overlay.Measure(new Size(256, 256)); overlay.Arrange(new Rect(0, 0, 256, 256)); overlay.UpdateLayout();
+        var crisp = Render(overlay);
+        Check("foreground-edge-stays-sharp", Pixel(crisp, 127, 128) < 8 && Pixel(crisp, 130, 128) > 60);
+        Capture(overlay, Path.Combine(args[0], "gaussian-pixel-proof.png"));
+        // Explicit Width/Height themselves impose a DesiredSize; test the auto-sized production case.
+        isolated.Width = isolated.Height = double.NaN;
+        isolated.InvalidateMeasure(); isolated.Measure(new Size(256, 256));
+        Check("backdrop-does-not-enlarge-layout", isolated.DesiredSize.Width == 0 && isolated.DesiredSize.Height == 0);
+
+        Enable(true); Radius(26); settings.Save();
+        var loaded = JsonSerializer.Deserialize<AppSettings>(File.ReadAllText(config))!;
+        Check("persistence-roundtrip", (bool)enabled.GetValue(loaded)! && (int)radius.GetValue(loaded)! == 26);
+        Enable(false); Radius(6); settings.Load();
+        Check("settings-reload", Enabled() && (int)radius.GetValue(settings.Current)! == 26);
+        var first = new SettingsWindow(settings, everything, bounds, () => { }, 3)
+            { Left = -9000, Top = -9000, WindowStartupLocation = WindowStartupLocation.Manual, ShowActivated = false, ShowInTaskbar = false };
+        var firstController = typeof(SettingsWindow).GetField("_backdropService", Private)!.GetValue(first)!;
+        int firstCaptures = 0;
+        Inject(firstController, _ =>
+        {
+            firstCaptures++;
+            ownWindowVisibleDuringCapture |= IsWindowVisible(new System.Windows.Interop.WindowInteropHelper(first).Handle);
+            return pattern;
+        });
+        first.Show(); Pump();
+        Console.WriteLine($"FIRST-SHOW: captures={firstCaptures}; snapshot={Snapshot(first.FindName("SettingsGaussianBackdrop")) != null}");
+        Check("persisted-option-blurs-first-window-show", firstCaptures == 1 && Snapshot(first.FindName("SettingsGaussianBackdrop")) != null);
+        Check("persisted-option-loaded-in-new-ui", ((CheckBox)first.FindName("ChkEnableGaussianBlur")).IsChecked == true
+            && ((Slider)first.FindName("SldGaussianBlurRadius")).Value == 26);
+        Check("first-show-wallpaper-layer", Snapshot(first.FindName("SettingsGaussianBackdrop")) != null);
+        first.Close();
+        window.Close(); main.Close();
+        Check("closed-windows-clear-captured-pixels", Snapshot(mainBackdrop) == null && Snapshot(settingsBackdrop) == null);
+        Check("controllers-disposed-on-close", (bool)mainController.GetType().GetField("_disposed", Private)!.GetValue(mainController)!
+            && (bool)settingsController.GetType().GetField("_disposed", Private)!.GetValue(settingsController)!);
+        if (args.Contains("--wallpaper-smoke"))
+        {
+            // Read the desktop wallpaper file/layer, never the screen or any window.
+            var wallpaper = Activator.CreateInstance(typeof(AppSettings).Assembly.GetType("EverythingonStart.Services.DesktopWallpaperService")!, new object?[] { null, null })!;
+            var native = (BitmapSource?)wallpaper.GetType().GetMethod("ReadRegion")!.Invoke(wallpaper, [new Rect(0, 0, 8, 8)]);
+            Check("desktop-wallpaper-layer-memory-only", native is { PixelWidth: 8, PixelHeight: 8, IsFrozen: true });
+            ((IDisposable)wallpaper).Dispose();
+        }
+        (app.Resources["AppThemeService"] as IDisposable)?.Dispose();
+        Console.WriteLine($"Summary: {_checks - _failures}/{_checks} passed");
+        app.Shutdown(); return _failures == 0 ? 0 : 1;
+    }
+
+    private static void Check(string name, bool pass)
+    {
+        _checks++; if (!pass) _failures++;
+        Console.WriteLine($"{(pass ? "PASS" : "FAIL")} {name}");
+    }
+    private static void Pump()
+    {
+        var frame = new DispatcherFrame();
+        Application.Current.Dispatcher.BeginInvoke(DispatcherPriority.ApplicationIdle, new Action(() => frame.Continue = false));
+        Dispatcher.PushFrame(frame);
+        foreach (Window window in Application.Current.Windows) window.UpdateLayout();
+    }
+    private static RenderTargetBitmap Render(FrameworkElement element)
+    {
+        var bitmap = new RenderTargetBitmap((int)Math.Ceiling(element.ActualWidth), (int)Math.Ceiling(element.ActualHeight), 96, 96, PixelFormats.Pbgra32);
+        bitmap.Render(element); return bitmap;
+    }
+    private static void Capture(FrameworkElement element, string path)
+    {
+        element.UpdateLayout();
+        var encoder = new PngBitmapEncoder(); encoder.Frames.Add(BitmapFrame.Create(Render(element)));
+        using var file = File.Create(path); encoder.Save(file);
+        Console.WriteLine("Screenshot: " + path);
+    }
+    private static BitmapSource Checkerboard()
+    {
+        byte[] pixels = new byte[256 * 256 * 4];
+        for (int y = 0; y < 256; y++) for (int x = 0; x < 256; x++)
+        {
+            byte channel = (byte)(((x / 8 + y / 8) % 2 == 0) ? 40 : 220);
+            int index = (y * 256 + x) * 4;
+            pixels[index] = pixels[index + 1] = pixels[index + 2] = channel; pixels[index + 3] = 255;
+        }
+        var bitmap = BitmapSource.Create(256, 256, 96, 96, PixelFormats.Bgra32, null, pixels, 256 * 4);
+        bitmap.Freeze(); return bitmap;
+    }
+    private static double Variance(BitmapSource bitmap)
+    {
+        var formatted = new FormatConvertedBitmap(bitmap, PixelFormats.Bgra32, null, 0);
+        int stride = formatted.PixelWidth * 4;
+        byte[] pixels = new byte[stride * formatted.PixelHeight]; formatted.CopyPixels(pixels, stride, 0);
+        double sum = 0, squared = 0; int count = 0;
+        for (int y = 40; y < 216; y++) for (int x = 40; x < 216; x++)
+        {
+            double value = pixels[y * stride + x * 4]; sum += value; squared += value * value; count++;
+        }
+        return squared / count - Math.Pow(sum / count, 2);
+    }
+    private static byte Pixel(BitmapSource bitmap, int x, int y)
+    {
+        byte[] pixel = new byte[4]; bitmap.CopyPixels(new Int32Rect(x, y, 1, 1), pixel, 4, 0); return pixel[0];
+    }
+    [DllImport("user32.dll")] private static extern bool IsWindowVisible(IntPtr hwnd);
+}

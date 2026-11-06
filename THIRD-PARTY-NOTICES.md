@@ -22,11 +22,22 @@ Everything itself must be installed and running separately; its application exec
 ## MingCute
 
 The `mingcute:settings-4-line` vector geometry is from MingCute Icons.
+Web search, website and external-link glyphs use `mingcute:search-line`,
+`mingcute:earth-2-line`, and `mingcute:external-link-line`; their original SVG assets are in `Assets/Icons/`.
 Copyright MingCute contributors. Apache License 2.0.
 
 - Source: https://github.com/mingcute-design/mingcute-icons
 - License: `licenses/MingCute-LICENSE.txt`.
 - Geometry is embedded in `Services/IconCacheService.cs` and used to render application-generated settings icons.
+
+## Html Agility Pack
+
+Html Agility Pack 1.13.1 is used to parse search-engine HTML into plain-text webpage result cards.
+MIT license; authors and project: Simon Mourier, contributors and ZZZ Projects.
+
+- Source: https://github.com/zzzprojects/html-agility-pack
+- License: `licenses/HtmlAgilityPack-LICENSE.txt`.
+- No page scripts, embedded browsers, cookies or automatic result-site requests are executed by this parser.
 
 ## .NET
 

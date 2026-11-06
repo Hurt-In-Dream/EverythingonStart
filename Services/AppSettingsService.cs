@@ -103,6 +103,8 @@ public sealed class AppSettings
     public bool EnablePopupAnimation { get; set; } = true;
     public AppThemeMode ThemeMode { get; set; } = AppThemeMode.Dark;
     public bool UseSystemAccentColor { get; set; }
+    public bool EnableGaussianBlur { get; set; }
+    public int GaussianBlurRadius { get; set; } = 20;
 
     public double CachedStartMenuCardWidthDip { get; set; }
     public double CachedStartMenuCardHeightDip { get; set; }

@@ -40,6 +40,13 @@ public partial class MainWindow : Window
     private readonly EverythingSearchService _everythingService;
     private readonly StartMenuIndexService _startMenuService;
     private readonly WebSuggestionService _webSuggestionService;
+    private readonly WebPreviewService _webPreviewService;
+    private readonly Func<string, bool> _openWebPreview;
+    private readonly ObservableCollection<WebPagePreview> _webPreviewResults = [];
+    private CancellationTokenSource? _webPreviewCts;
+    private long _webPreviewVersion;
+    private string? _webPreviewQuery;
+    private WebSearchEngine _webPreviewEngine;
     private readonly IconCacheService _iconCacheService;
     private readonly ActionExecutorService _actionExecutor;
     private readonly StartMenuBoundsService _boundsService;
@@ -52,6 +59,7 @@ public partial class MainWindow : Window
     private IntPtr _cachedTaskbarHwnd;
     private bool _noTaskbarStyleApplied;
     private readonly AppThemeService _themeService;
+    private readonly WindowBackdropService _backdropService;
     private bool _isShowingDefaultLanding;
     private long _searchVersion;
     private int _taskbarKeepTopTicksRemaining;
@@ -87,13 +95,26 @@ public partial class MainWindow : Window
         _iconCacheService = iconCacheService;
         _actionExecutor = actionExecutor;
         _boundsService = boundsService;
+        _webPreviewService = new WebPreviewService();
+        _openWebPreview = url => _actionExecutor.ExecuteOpen(new SearchResultItem
+        {
+            Title = url, Subtitle = "网页预览", FullPath = url, Kind = SearchResultKind.WebSuggestion
+        });
 
         _themeService = AppThemeService.GetOrCreate(_settingsService);
         InitializeComponent();
         _themeService.RegisterWindow(this);
+        _backdropService = new WindowBackdropService(this, MainGaussianBackdrop, _settingsService);
         _themeService.ThemeChanged += OnAppThemeChanged;
         Closed += (_, _) => _themeService.ThemeChanged -= OnAppThemeChanged;
         ResultsListBox.ItemsSource = _entries;
+        WebPreviewResultsList.ItemsSource = _webPreviewResults;
+        IsVisibleChanged += (_, e) =>
+        {
+            if (e.NewValue is false) CancelWebPreview();
+            else if (_selectedItem?.IsWeb == true) UpdatePreviewPane(_selectedItem);
+        };
+        Closed += (_, _) => { CancelWebPreview(); _webPreviewService.Dispose(); };
 
         _inputHandoverFocusTimer = new DispatcherTimer(DispatcherPriority.Input)
         {
@@ -203,6 +224,7 @@ public partial class MainWindow : Window
     public void ApplyVisualSettings()
     {
         _themeService.ApplyCurrentSettings();
+        _backdropService.ApplyCurrentSettings();
     }
 
     private void OnAppThemeChanged(object? sender, EventArgs e)
@@ -253,6 +275,7 @@ public partial class MainWindow : Window
 
         // 检测呼出前是否存在全屏窗口，仅在存在全屏窗口时执行降级与任务栏置顶
         RevealAndRaiseTaskbar();
+        _backdropService.PrepareForShow();
 
         if (!IsVisible)
         {
@@ -399,6 +422,7 @@ public partial class MainWindow : Window
 
     public void HidePopup()
     {
+        CancelWebPreview();
         _inputHandoverFocusTimer.Stop();
         _winKeyHookService?.CompleteInputHandover();
         if (!IsVisible)
@@ -1268,6 +1292,13 @@ public partial class MainWindow : Window
             _selectedItem.PropertyChanged += OnSelectedItemPropertyChanged;
             UpdatePreviewPane(item);
         }
+        else
+        {
+            if (_selectedItem != null)
+                _selectedItem.PropertyChanged -= OnSelectedItemPropertyChanged;
+            _selectedItem = null;
+            UpdatePreviewPane(null);
+        }
     }
 
     private void OnSelectedItemPropertyChanged(object? sender, PropertyChangedEventArgs e)
@@ -1280,6 +1311,16 @@ public partial class MainWindow : Window
 
     private void UpdatePreviewPane(SearchResultItem? item)
     {
+        if (item?.IsWeb == true)
+        {
+            FileDetailsPreviewPanel.Visibility = Visibility.Collapsed;
+            WebResultsPreviewPanel.Visibility = Visibility.Visible;
+            StartWebPreview(item);
+            return;
+        }
+        CancelWebPreview();
+        WebResultsPreviewPanel.Visibility = Visibility.Collapsed;
+        FileDetailsPreviewPanel.Visibility = Visibility.Visible;
         if (item == null)
         {
             PreviewIconImage.Source = null;
@@ -1316,6 +1357,94 @@ public partial class MainWindow : Window
                      || ext.Equals(".cmd", StringComparison.OrdinalIgnoreCase);
         AdminActionLabel.Text = isExe ? "以管理员身份运行" : "管理员取得所有权";
         CopyPathActionLabel.Text = "复制路径";
+    }
+
+    private void CancelWebPreview()
+    {
+        Interlocked.Increment(ref _webPreviewVersion);
+        _webPreviewCts?.Cancel();
+        _webPreviewCts?.Dispose();
+        _webPreviewCts = null;
+        _webPreviewQuery = null;
+    }
+
+    private void StartWebPreview(SearchResultItem item)
+    {
+        string query = WebPreviewService.GetQuery(item);
+        var engine = _settingsService.Current.SearchEngine;
+        if (_webPreviewQuery == query && _webPreviewEngine == engine && _webPreviewCts != null)
+            return;
+        CancelWebPreview();
+        _webPreviewQuery = query;
+        _webPreviewEngine = engine;
+        _webPreviewResults.Clear();
+        WebPreviewScrollViewer.ScrollToTop();
+        WebPreviewQueryText.Text = query.Length == 0 ? "网页预览" : $"“{query}”的网页预览";
+        WebPreviewEngineText.Text = engine == WebSearchEngine.Baidu ? "百度" : engine.ToString();
+        WebPreviewMessageText.Text = query.Length == 0 ? "请选择搜索词，在浏览器继续查看。" : "正在加载网页结果…";
+        WebPreviewMessageText.Visibility = Visibility.Visible;
+        if (!IsVisible || query.Length == 0)
+            return;
+        _webPreviewCts = new CancellationTokenSource();
+        long version = Volatile.Read(ref _webPreviewVersion);
+        _ = LoadWebPreviewAsync(query, engine, version, _webPreviewCts.Token);
+    }
+
+    private async Task LoadWebPreviewAsync(string query, WebSearchEngine engine, long version, CancellationToken token)
+    {
+        try
+        {
+            // Arrow-key navigation and typing must not send one HTTP request for every transient selection.
+            await Task.Delay(250, token);
+            var response = await _webPreviewService.GetResultsAsync(query, engine, token);
+            token.ThrowIfCancellationRequested();
+            await Dispatcher.InvokeAsync(() =>
+            {
+                if (token.IsCancellationRequested || version != Volatile.Read(ref _webPreviewVersion)
+                    || !IsVisible || _selectedItem?.IsWeb != true || WebPreviewService.GetQuery(_selectedItem) != query)
+                    return;
+                _webPreviewResults.Clear();
+                foreach (var result in response.Results) _webPreviewResults.Add(result);
+                WebPreviewMessageText.Text = response.Message;
+                WebPreviewMessageText.Visibility = response.Status == WebPreviewStatus.Ready ? Visibility.Collapsed : Visibility.Visible;
+            });
+        }
+        catch (OperationCanceledException) { }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            if (!token.IsCancellationRequested && version == Volatile.Read(ref _webPreviewVersion))
+                await Dispatcher.InvokeAsync(() =>
+                {
+                    if (token.IsCancellationRequested || version != Volatile.Read(ref _webPreviewVersion)
+                        || !IsVisible || _selectedItem?.IsWeb != true) return;
+                    WebPreviewMessageText.Text = "网页预览暂不可用，请在浏览器继续。";
+                    WebPreviewMessageText.Visibility = Visibility.Visible;
+                });
+        }
+    }
+
+    private void OnWebPreviewLinkClick(object sender, RoutedEventArgs e)
+    {
+        string? url = (sender as FrameworkElement)?.Tag switch
+        {
+            WebPagePreview result => result.Url,
+            WebPreviewLink link => link.Url,
+            _ => null
+        };
+        if (url != null && WebPreviewService.IsSafeWebUrl(url) && _openWebPreview(url)) HidePopup();
+    }
+
+    private void OnWebPreviewBrowserClick(object sender, RoutedEventArgs e)
+    {
+        if (_selectedItem?.IsWeb == true && _openWebPreview(WebPreviewService.GetSearchUrl(WebPreviewService.GetQuery(_selectedItem), _settingsService.Current.SearchEngine)))
+            HidePopup();
+    }
+
+    private void OnWebPreviewRetryClick(object sender, RoutedEventArgs e)
+    {
+        _webPreviewService.ClearCache();
+        CancelWebPreview();
+        if (_selectedItem?.IsWeb == true) StartWebPreview(_selectedItem);
     }
 
     private void OnSectionHeaderMouseLeftButtonUp(object sender, MouseButtonEventArgs e)
