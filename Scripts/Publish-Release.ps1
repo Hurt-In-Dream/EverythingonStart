@@ -50,7 +50,7 @@ foreach ($name in @('Everything3.dll', 'Everything64.dll')) {
     $published = (Get-FileHash -Algorithm SHA256 -LiteralPath (Join-Path $package $name)).Hash
     if ($original -ne $published) { throw "Native dependency changed during packaging: $name" }
 }
-& git -C $repo archive --format=zip --prefix="EverythingonStart-v$version-source/" --output=$sourceZip $commit
+& git -c core.autocrlf=false -C $repo archive --format=zip --prefix="EverythingonStart-v$version-source/" --output=$sourceZip $commit
 if ($LASTEXITCODE -ne 0) { throw 'Source archive failed.' }
 Compress-Archive -LiteralPath $package -DestinationPath $binaryZip -CompressionLevel Optimal
 $lines = foreach ($path in @($binaryZip, $sourceZip)) {
