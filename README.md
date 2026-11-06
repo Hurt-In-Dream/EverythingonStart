@@ -6,12 +6,12 @@
 
 ## 下载与快速开始
 
-从 [v1.4.0 Release](https://github.com/Hurt-In-Dream/EverythingonStart/releases/tag/v1.4.0) 选择 Windows x64 版本：
+从 [v1.4.1 Release](https://github.com/Hurt-In-Dream/EverythingonStart/releases/tag/v1.4.1) 选择 Windows x64 版本：
 
 | 版本 | 下载 | 使用方式 |
 | --- | --- | --- |
-| 安装版 | [Setup-x64.exe](https://github.com/Hurt-In-Dream/EverythingonStart/releases/download/v1.4.0/EverythingonStart-v1.4.0-Setup-x64.exe) | 按用户安装，无需管理员权限，默认安装到 `%LOCALAPPDATA%\Programs\EverythingonStart` |
-| 绿色单文件版 | [Portable-x64.exe](https://github.com/Hurt-In-Dream/EverythingonStart/releases/download/v1.4.0/EverythingonStart-v1.4.0-Portable-x64.exe) | 下载一个 EXE 即可运行，无需旁置 DLL 或安装 .NET |
+| 安装版 | [Setup-x64.exe](https://github.com/Hurt-In-Dream/EverythingonStart/releases/download/v1.4.1/EverythingonStart-v1.4.1-Setup-x64.exe) | 按用户安装，无需管理员权限，默认安装到 `%LOCALAPPDATA%\Programs\EverythingonStart` |
+| 绿色单文件版 | [Portable-x64.exe](https://github.com/Hurt-In-Dream/EverythingonStart/releases/download/v1.4.1/EverythingonStart-v1.4.1-Portable-x64.exe) | 下载一个 EXE 即可运行，无需旁置 DLL 或安装 .NET |
 
 单文件版内置 .NET 与 Everything SDK，首次运行会将原生运行库解压到 .NET 的用户临时缓存；设置仍保存在用户目录，不是零磁盘写入模式。
 推荐 Windows 11 x64。文件检索需要安装并在后台运行 [Everything](https://www.voidtools.com/downloads/)。
@@ -31,6 +31,10 @@
 浅色设置中心、主题与原生背景模糊选项：
 
 ![浅色设置中心](docs/images/settings-light.png)
+
+菜单图标栏、勾选与分隔线使用统一主题底板（以下为测试数据示例）：
+
+![深色菜单配色示例](docs/images/menu-dark.png)
 
 截图来自新版真实 WPF 界面，使用隔离配置与示例搜索结果，不含用户文件列表。此处展示 UI，不用静态截图证明动态壁纸效果。
 
@@ -218,10 +222,10 @@ pwsh -NoProfile -File .\Scripts\Publish-Release.ps1 -InnoSetupCompiler 'C:\Progr
 .\bin\x64\Release\net10.0-windows\EverythingonStart.exe --self-test
 
 # 单文件包诊断：不启动托盘、全局热键、设置服务或单实例接管
-.\EverythingonStart-v1.4.0-Portable-x64.exe --package-self-test
+.\EverythingonStart-v1.4.1-Portable-x64.exe --package-self-test
 
 # 输出单文件内嵌许可证
-.\EverythingonStart-v1.4.0-Portable-x64.exe --licenses
+.\EverythingonStart-v1.4.1-Portable-x64.exe --licenses
 ```
 
 ## 许可证与第三方组件

@@ -74,7 +74,7 @@ internal static class Program
         settings.Current.EnableGaussianBlur = false; Apply(MainController()); Apply(OptionsController());
         Check("disable-native-both-windows", !Applied(MainController()) && !Applied(OptionsController()));
         Check("disable-restores-managed-shadow", ((FrameworkElement)main.FindName("WindowShadowBorder")).Visibility == Visibility.Visible);
-        Check("disable-clears-native-clipping", Region(main).Right == 0);
+        Check("disable-preserves-rounded-card-clipping", Region(main).Right > 0 && Region(main).Left > 0);
         main.Hide(); options.Hide();
 
         bool highContrast = false, available = true; int enables = 0, disables = 0;

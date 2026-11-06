@@ -20,7 +20,13 @@
         FontFamily="Segoe UI Variable Display, Inter, Microsoft YaHei UI, Segoe UI"
         TextOptions.TextFormattingMode="Ideal"
         TextOptions.TextRenderingMode="ClearType"
-        PreviewKeyDown="OnWindowPreviewKeyDown">
+         PreviewKeyDown="OnWindowPreviewKeyDown">
+
+    <!-- Extend client glass through the resize frame; keep resize hit zones inside the clipped card. -->
+    <WindowChrome.WindowChrome>
+        <WindowChrome CaptionHeight="0" ResizeBorderThickness="17" GlassFrameThickness="-1"
+                      CornerRadius="0" UseAeroCaptionButtons="False" />
+    </WindowChrome.WindowChrome>
 
     <Window.Resources>
         <Style TargetType="TextBlock">
@@ -425,9 +431,6 @@
             Background="{DynamicResource Theme.WindowBackgroundBrush}"
             BorderBrush="{DynamicResource Theme.Alpha33Brush}"
             BorderThickness="1">
-        <Border.Effect>
-            <DropShadowEffect BlurRadius="24" ShadowDepth="6" Opacity="0.6" Color="#000000" />
-        </Border.Effect>
 
         <Grid>
             <Grid.RowDefinitions>

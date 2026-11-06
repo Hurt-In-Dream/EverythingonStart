@@ -53,6 +53,25 @@ pwsh -NoProfile -File .\Tests\Test-NativeBackdrop.ps1 -AppAssemblyDirectory .\bi
 测试不启动/替换正在运行的托盘实例，不修改用户设置、系统壁纸或 Wallpaper Engine 配置。
 这是 DWM 合成机制验证，不替代不同驱动、多显示器、Wallpaper Engine 暂停策略下的人工检查。
 
+### 黑边 / 白边与圆角裁剪
+
+```powershell
+pwsh -NoProfile -File .\Tests\Test-WindowEdges.ps1 -AppAssemblyDirectory .\bin\x64\Release\net10.0-windows
+```
+
+用完全覆盖测试区域的自有绿色窗口衬底，测量真实主界面/设置界面的外边距、圆角及右/下边缘像素。
+覆盖模糊开/关、高对比度与接口失败回退、设置窗口最小尺寸、重新打开和主界面弹出动画，另验证裁剪后仍能命中窗口缩放边缘。
+仅保存自有合成窗口覆盖范围的截图；不截取用户桌面，不替换运行中的实例或用户设置。
+
+### 菜单图标栏与分隔线配色
+
+```powershell
+pwsh -NoProfile -File .\Tests\Test-MenuChrome.ps1 -AppAssemblyDirectory .\bin\x64\Release\net10.0-windows
+```
+
+在隔离 WPF 应用中渲染真实 ContextMenu 和 MenuItem，检查深色/浅色菜单的图标栏像素、
+统一底板、分隔线、勾选、禁用文字、子菜单与点击路由。只绘制测试菜单，不打开桌面弹窗或发送全局键盘输入。
+
 ## Web 网页预览与 MingCute 图标回归
 
 ```powershell

@@ -30,7 +30,37 @@
         <Setter Property="Background" Value="{DynamicResource Theme.CardBrush}" />
         <Setter Property="Foreground" Value="{DynamicResource Theme.TextPrimaryBrush}" />
         <Setter Property="BorderBrush" Value="{DynamicResource Theme.BorderBrush}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="Padding" Value="4" />
+        <Setter Property="SnapsToDevicePixels" Value="True" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="ContextMenu">
+                    <!-- The system template paints its own light icon gutter even when Background is dark. -->
+                    <Border x:Name="MenuChrome" Background="{TemplateBinding Background}"
+                            BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}"
+                            CornerRadius="6" Padding="{TemplateBinding Padding}" SnapsToDevicePixels="True">
+                        <ScrollViewer CanContentScroll="True" HorizontalScrollBarVisibility="Disabled"
+                                      VerticalScrollBarVisibility="Auto" Focusable="False">
+                            <ItemsPresenter KeyboardNavigation.DirectionalNavigation="Cycle" KeyboardNavigation.TabNavigation="Cycle"
+                                            Grid.IsSharedSizeScope="True" />
+                        </ScrollViewer>
+                    </Border>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
     </Style>
+    <Style x:Key="{x:Static MenuItem.SeparatorStyleKey}" TargetType="Separator">
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Separator">
+                    <Border x:Name="MenuSeparator" Height="1" Margin="32,3,6,3"
+                            Background="{DynamicResource Theme.BorderBrush}" SnapsToDevicePixels="True" />
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+    <Style TargetType="Separator" BasedOn="{StaticResource {x:Static MenuItem.SeparatorStyleKey}}" />
     <Style TargetType="MenuItem">
         <Setter Property="Foreground" Value="{DynamicResource Theme.TextPrimaryBrush}" />
         <Setter Property="Background" Value="Transparent" />

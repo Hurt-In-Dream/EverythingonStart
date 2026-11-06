@@ -1,0 +1,128 @@
+using System.IO;
+using System.Reflection;
+using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
+using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Interop;
+using System.Windows.Media;
+using System.Windows.Threading;
+using EverythingonStart;
+using EverythingonStart.Models;
+using EverythingonStart.Services;
+
+internal static class Program
+{
+    private const BindingFlags Private = BindingFlags.Instance | BindingFlags.NonPublic;
+    private static int checks, failures;
+    private static readonly Color CanvasColor = Color.FromRgb(20, 210, 80);
+    [STAThread] private static int Main(string[] args)
+    {
+        var app = new Application { ShutdownMode = ShutdownMode.OnExplicitShutdown };
+        var foreground = GetForegroundWindow();
+        var settings = (AppSettingsService)RuntimeHelpers.GetUninitializedObject(typeof(AppSettingsService));
+        typeof(AppSettingsService).GetProperty("Current")!.SetValue(settings, new AppSettings());
+        typeof(AppSettingsService).GetField("_settingsFilePath", Private)!.SetValue(settings, Path.Combine(args[0], "isolated-settings.json"));
+        using var everything = new EverythingSearchService(settings.Current.EverythingInstanceName, settings);
+        var bounds = new StartMenuBoundsService(settings);
+        var canvas = new Window { Left = 20, Top = 20, Width = 1060, Height = 1050, WindowStyle = WindowStyle.None, ResizeMode = ResizeMode.NoResize,
+            ShowActivated = false, ShowInTaskbar = false, Topmost = true, Background = new SolidColorBrush(CanvasColor) };
+        canvas.Show();
+        var main = new MainWindow(settings, everything, new StartMenuIndexService(), new WebSuggestionService(settings), new IconCacheService(),
+            new ActionExecutorService(everything, settings), bounds) { Left = 50, Top = 50, ShowActivated = false };
+        var options = new SettingsWindow(settings, everything, bounds, () => { }, 3) { Left = 50, Top = 50,
+            WindowStartupLocation = WindowStartupLocation.Manual, ShowActivated = false, ShowInTaskbar = false, Topmost = true };
+        var mainController = typeof(MainWindow).GetField("_backdropService", Private)!.GetValue(main)!;
+        var optionsController = typeof(SettingsWindow).GetField("_backdropService", Private)!.GetValue(options)!;
+        var highContrast = typeof(WindowBackdropService).GetField("_highContrastReader", Private)!;
+        var native = typeof(WindowBackdropService).GetField("_nativeApply", Private)!;
+        Func<IntPtr, bool, bool> realApply = WindowBackdropService.ApplyNativeBackdrop;
+        foreach (var (mode, blur, contrast, unavailable) in new[] {
+            ("off", false, false, false), ("on", true, false, false), ("high-contrast", true, true, false), ("unavailable", true, false, true) })
+        {
+            settings.Current.EnableGaussianBlur = blur;
+            foreach (var controller in new[] { mainController, optionsController })
+            {
+                highContrast.SetValue(controller, (Func<bool>)(() => contrast));
+                native.SetValue(controller, unavailable ? (Func<IntPtr, bool, bool>)((h, _) => { realApply(h, false); return false; }) : realApply);
+            }
+            settings.Current.ThemeMode = AppThemeMode.Dark; AppThemeService.GetOrCreate(settings).ApplyCurrentSettings();
+            main.Show(); ((WindowBackdropService)mainController).ApplyCurrentSettings(); Pump(180);
+            Inspect("main-" + mode, main, (Border)main.FindName("RootCardBorder"), canvas, args[0]); main.Hide();
+            settings.Current.ThemeMode = AppThemeMode.Light; AppThemeService.GetOrCreate(settings).ApplyCurrentSettings();
+            options.Show(); ((WindowBackdropService)optionsController).ApplyCurrentSettings(); Pump(180);
+            Inspect("settings-" + mode, options, (Border)options.FindName("SettingsRootBorder"), canvas, args[0]); options.Hide();
+        }
+        highContrast.SetValue(optionsController, (Func<bool>)(() => false)); native.SetValue(optionsController, realApply);
+        settings.Current.EnableGaussianBlur = true;
+        options.Width = options.MinWidth; options.Height = options.MinHeight; options.Show(); Pump(180);
+        Inspect("settings-minimum", options, (Border)options.FindName("SettingsRootBorder"), canvas, args[0]);
+        var card = (Border)options.FindName("SettingsRootBorder");
+        var top = card.PointToScreen(new Point(card.ActualWidth / 2, 2));
+        var right = card.PointToScreen(new Point(card.ActualWidth - 2, card.ActualHeight / 2));
+        Check("clipped-settings-top-resize-hit-test", Hit(options, top) == 12);
+        Check("clipped-settings-right-resize-hit-test", Hit(options, right) == 11);
+        options.Hide(); options.Show(); Pump(180);
+        Inspect("settings-reopen", options, card, canvas, args[0]);
+        options.Hide(); highContrast.SetValue(mainController, (Func<bool>)(() => false)); native.SetValue(mainController, realApply);
+        settings.Current.ThemeMode = AppThemeMode.Dark; AppThemeService.GetOrCreate(settings).ApplyCurrentSettings();
+        main.Show(); Pump(120);
+        var mainCard = (Border)main.FindName("RootCardBorder"); var beforeAnimation = mainCard.PointToScreen(new Point());
+        typeof(MainWindow).GetMethod("PlayPopupShowAnimation", Private)!.Invoke(main, null);
+        // Freeze the real transform at its 18-DIP initial frame for repeatable baseline/rollback comparisons.
+        var slide = (TranslateTransform)main.FindName("PopupSlideTransform"); slide.BeginAnimation(TranslateTransform.YProperty, null); slide.Y = 18; Pump(40);
+        Check("animation-keeps-native-card-stationary", (mainCard.PointToScreen(new Point()) - beforeAnimation).Length < 0.5);
+        Inspect("main-animation", main, mainCard, canvas, args[0]);
+        typeof(MainWindow).GetMethod("ResetPopupAnimationTransforms", Private)!.Invoke(main, null);
+        main.Close(); options.Close(); canvas.Close();
+        Check("foreground-unchanged", GetForegroundWindow() == foreground);
+        (app.Resources["AppThemeService"] as IDisposable)?.Dispose();
+        Console.WriteLine($"Summary: {checks - failures}/{checks} passed"); app.Shutdown(); return failures == 0 ? 0 : 1;
+    }
+    private static void Inspect(string label, Window window, Border surface, Window canvas, string directory)
+    {
+        DwmFlush(); GetWindowRect(new WindowInteropHelper(window).Handle, out var rect); GetWindowRect(new WindowInteropHelper(canvas).Handle, out var background);
+        if (rect.Left < background.Left || rect.Top < background.Top || rect.Right > background.Right || rect.Bottom > background.Bottom)
+            throw new InvalidOperationException("Synthetic canvas does not cover the entire measured window; refusing desktop capture.");
+        // Developer-only screenshot: every pixel is covered by this test's own opaque synthetic canvas/windows.
+        using var image = new System.Drawing.Bitmap(rect.Right - rect.Left, rect.Bottom - rect.Top);
+        using (var graphics = System.Drawing.Graphics.FromImage(image)) graphics.CopyFromScreen(rect.Left, rect.Top, 0, 0, image.Size);
+        image.Save(Path.Combine(directory, label + ".png"));
+        var topLeft = surface.PointToScreen(new Point()); var bottomRight = surface.PointToScreen(new Point(surface.ActualWidth, surface.ActualHeight));
+        int left = (int)Math.Round(topLeft.X) - rect.Left, top = (int)Math.Round(topLeft.Y) - rect.Top;
+        int right = (int)Math.Round(bottomRight.X) - rect.Left, bottom = (int)Math.Round(bottomRight.Y) - rect.Top;
+        var margin = image.GetPixel(2, (top + bottom) / 2); var corner = image.GetPixel(left + 1, top + 1);
+        var strip = image.GetPixel(Math.Min(right, image.Width - 1), (top + bottom) / 2);
+        var bottomStrip = image.GetPixel((left + right) / 2, Math.Min(bottom, image.Height - 1));
+        IntPtr region = CreateRectRgn(0, 0, 0, 0);
+        try
+        {
+            int kind = GetWindowRgn(new WindowInteropHelper(window).Handle, region); GetRgnBox(region, out var clipped);
+            Console.WriteLine($"EDGE {label}: card=({left},{top},{right},{bottom}); region-kind={kind}; region=({clipped.Left},{clipped.Top},{clipped.Right},{clipped.Bottom}); margin={Rgb(margin)}; corner={Rgb(corner)}; right={Rgb(strip)}; bottom={Rgb(bottomStrip)}");
+            Check(label + "/rounded-region-present", kind == 3);
+        }
+        finally { DeleteObject(region); }
+        Check(label + "/no-solid-shadow-margin", IsCanvas(margin));
+        Check(label + "/no-colored-rounded-corner", IsCanvas(corner));
+        Check(label + "/no-one-pixel-right-bottom-strip", IsCanvas(strip) && IsCanvas(bottomStrip));
+    }
+    private static bool IsCanvas(System.Drawing.Color c) => Math.Abs(c.R - CanvasColor.R) + Math.Abs(c.G - CanvasColor.G) + Math.Abs(c.B - CanvasColor.B) < 45;
+    private static string Rgb(System.Drawing.Color c) => $"({c.R},{c.G},{c.B})";
+    private static int Hit(Window window, Point p) => (int)SendMessage(new WindowInteropHelper(window).Handle, 0x0084, IntPtr.Zero,
+        new IntPtr(((int)p.Y << 16) | ((int)p.X & 0xffff)));
+    private static void Check(string name, bool pass) { checks++; if (!pass) failures++; Console.WriteLine($"{(pass ? "PASS" : "FAIL")} {name}"); }
+    private static void Pump(int ms)
+    {
+        var frame = new DispatcherFrame(); var timer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(ms) };
+        timer.Tick += (_, _) => frame.Continue = false; timer.Start(); Dispatcher.PushFrame(frame); timer.Stop();
+    }
+    [StructLayout(LayoutKind.Sequential)] private struct RECT { public int Left, Top, Right, Bottom; }
+    [DllImport("user32.dll")] private static extern bool GetWindowRect(IntPtr hwnd, out RECT rect);
+    [DllImport("user32.dll")] private static extern IntPtr GetForegroundWindow();
+    [DllImport("user32.dll")] private static extern IntPtr SendMessage(IntPtr hwnd, int message, IntPtr wParam, IntPtr lParam);
+    [DllImport("user32.dll")] private static extern int GetWindowRgn(IntPtr hwnd, IntPtr region);
+    [DllImport("gdi32.dll")] private static extern IntPtr CreateRectRgn(int left, int top, int right, int bottom);
+    [DllImport("gdi32.dll")] private static extern int GetRgnBox(IntPtr region, out RECT rect);
+    [DllImport("gdi32.dll")] private static extern bool DeleteObject(IntPtr handle);
+    [DllImport("dwmapi.dll")] private static extern int DwmFlush();
+}

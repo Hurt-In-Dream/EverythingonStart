@@ -1,0 +1,75 @@
+using System.IO;
+using System.Reflection;
+using System.Runtime.CompilerServices;
+using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Media;
+using System.Windows.Media.Imaging;
+using System.Windows.Shapes;
+using System.Windows.Threading;
+using EverythingonStart.Models;
+using EverythingonStart.Services;
+
+internal static class Program
+{
+    private static int checks, failures;
+    [STAThread] private static int Main(string[] args)
+    {
+        var app = new Application { ShutdownMode = ShutdownMode.OnExplicitShutdown };
+        var settings = (AppSettingsService)RuntimeHelpers.GetUninitializedObject(typeof(AppSettingsService));
+        typeof(AppSettingsService).GetProperty("Current")!.SetValue(settings, new AppSettings());
+        using var theme = new AppThemeService(settings, observeSystemChanges: false);
+        ContextMenu menu = null!; MenuItem icon = null!, checkedItem = null!, uncheckedItem = null!, disabled = null!, parent = null!;
+        Separator separator = null!;
+        void BuildMenu()
+        {
+            // Production opens a fresh menu for each click; render the same control without opening a desktop popup.
+            menu = new ContextMenu { Style = (Style)app.FindResource(typeof(ContextMenu)), Visibility = Visibility.Visible };
+            icon = new MenuItem { Header = "打开设置中心（菜单示例）", Icon = new Ellipse { Width = 12, Height = 12, Fill = Brushes.DodgerBlue } };
+            checkedItem = new MenuItem { Header = "Win 键模式：单按 Win 键直接呼出", IsCheckable = true, IsChecked = true };
+            uncheckedItem = new MenuItem { Header = "Web 搜索引擎：Bing", IsCheckable = true };
+            disabled = new MenuItem { Header = "禁用项", IsEnabled = false };
+            parent = new MenuItem { Header = "子菜单" }; parent.Items.Add(new MenuItem { Header = "子项", IsCheckable = true, IsChecked = true });
+            separator = new Separator();
+            foreach (var item in new object[] { icon, separator, checkedItem, uncheckedItem, disabled, parent }) menu.Items.Add(item);
+        }
+        Color Resource(string name) => ((SolidColorBrush)app.FindResource("Theme." + name + "Brush")).Color;
+        void Layout()
+        {
+            var frame = new DispatcherFrame(); app.Dispatcher.BeginInvoke(DispatcherPriority.ApplicationIdle, new Action(() => frame.Continue = false)); Dispatcher.PushFrame(frame);
+            menu.ApplyTemplate(); menu.Measure(new Size(700, 900)); menu.Arrange(new Rect(new Point(), menu.DesiredSize)); menu.UpdateLayout();
+        }
+        foreach (var mode in new[] { AppThemeMode.Dark, AppThemeMode.Light })
+        {
+            settings.Current.ThemeMode = mode; theme.ApplyCurrentSettings(); BuildMenu(); Layout();
+            var bitmap = new RenderTargetBitmap((int)Math.Ceiling(menu.ActualWidth), (int)Math.Ceiling(menu.ActualHeight), 96, 96, PixelFormats.Pbgra32);
+            bitmap.Render(menu);
+            var encoder = new PngBitmapEncoder(); encoder.Frames.Add(BitmapFrame.Create(bitmap));
+            using (var file = File.Create(System.IO.Path.Combine(args[0], mode + ".png"))) encoder.Save(file);
+            var card = Resource("Card");
+            double totalDifference = 0; int count = 0;
+            byte[] pixel = new byte[4];
+            for (int y = 12; y < bitmap.PixelHeight - 12; y++)
+            {
+                bitmap.CopyPixels(new Int32Rect(7, y, 1, 1), pixel, 4, 0);
+                totalDifference += Math.Abs(pixel[2] - card.R) + Math.Abs(pixel[1] - card.G) + Math.Abs(pixel[0] - card.B); count++;
+            }
+            double difference = totalDifference / count;
+            Console.WriteLine($"MENU {mode}: size={bitmap.PixelWidth}x{bitmap.PixelHeight}; icon-gutter-theme-difference={difference:F2}");
+            Check(mode + "/uniform-themed-icon-gutter", difference < 15);
+            Check(mode + "/custom-menu-chrome", menu.Template.FindName("MenuChrome", menu) is Border);
+            Check(mode + "/checked-glyph-visible", ((UIElement)checkedItem.Template.FindName("MenuCheck", checkedItem)).Visibility == Visibility.Visible);
+            Check(mode + "/unchecked-glyph-hidden", ((UIElement)uncheckedItem.Template.FindName("MenuCheck", uncheckedItem)).Visibility == Visibility.Collapsed);
+            Check(mode + "/text-follows-theme", ((SolidColorBrush)checkedItem.Foreground).Color == Resource("TextPrimary"));
+            Check(mode + "/disabled-text-follows-theme", ((SolidColorBrush)disabled.Foreground).Color == Resource("TextDisabled"));
+            Check(mode + "/submenu-arrow-visible", ((UIElement)parent.Template.FindName("SubmenuArrow", parent)).Visibility == Visibility.Visible);
+            Check(mode + "/submenu-popup-preserved", parent.Template.FindName("PART_Popup", parent) is System.Windows.Controls.Primitives.Popup);
+            Check(mode + "/separator-follows-theme", separator.Template.FindName("MenuSeparator", separator) is Border line && ((SolidColorBrush)line.Background).Color == Resource("Border"));
+        }
+        bool clicked = false; checkedItem.Click += (_, _) => clicked = true; checkedItem.RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));
+        Check("click-routing-preserved", clicked);
+        Check("icon-content-preserved", ReferenceEquals(icon.Icon, ((ContentPresenter)icon.Template.FindName("MenuIcon", icon)).Content));
+        Console.WriteLine($"Summary: {checks - failures}/{checks} passed"); app.Shutdown(); return failures == 0 ? 0 : 1;
+    }
+    private static void Check(string name, bool pass) { checks++; if (!pass) failures++; Console.WriteLine($"{(pass ? "PASS" : "FAIL")} {name}"); }
+}

@@ -495,13 +495,7 @@
     </Window.Resources>
 
     <!-- 根容器：将静态阴影层与动态内容层分离，避免子控件悬停/打字触发整窗高斯阴影重绘 -->
-    <Grid x:Name="PopupRootContainer" RenderTransformOrigin="0.5,1.0">
-        <Grid.RenderTransform>
-            <TransformGroup>
-                <ScaleTransform x:Name="PopupScaleTransform" ScaleX="1" ScaleY="1" />
-                <TranslateTransform x:Name="PopupSlideTransform" X="0" Y="0" />
-            </TransformGroup>
-        </Grid.RenderTransform>
+    <Grid x:Name="PopupRootContainer">
 
         <!-- 静态缓存阴影层（仅在尺寸改变时光栅化一次） -->
         <Border x:Name="WindowShadowBorder" Margin="10"
@@ -529,7 +523,14 @@
                 BorderThickness="1">
 
         <Grid>
-        <Grid x:Name="RootContentGrid" Margin="22,17,22,18">
+        <Grid x:Name="RootContentGrid" Margin="22,17,22,18" RenderTransformOrigin="0.5,1.0">
+            <!-- Native glass/card clipping must remain stationary; animate foreground content only. -->
+            <Grid.RenderTransform>
+                <TransformGroup>
+                    <ScaleTransform x:Name="PopupScaleTransform" ScaleX="1" ScaleY="1" />
+                    <TranslateTransform x:Name="PopupSlideTransform" X="0" Y="0" />
+                </TransformGroup>
+            </Grid.RenderTransform>
             <Grid.LayoutTransform>
                 <ScaleTransform x:Name="ContentUiScaleTransform" ScaleX="1" ScaleY="1" />
             </Grid.LayoutTransform>

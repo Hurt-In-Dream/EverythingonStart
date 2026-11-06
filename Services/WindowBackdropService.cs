@@ -89,9 +89,9 @@ public sealed class WindowBackdropService : IDisposable
         if (_disposed) return;
         var hwnd = new WindowInteropHelper(_window).Handle;
         if (hwnd == IntPtr.Zero) return;
-        if (!IsApplied) { SetWindowRgn(hwnd, IntPtr.Zero, true); return; }
         if (_surface.ActualWidth <= 0 || _surface.ActualHeight <= 0 || !GetWindowRect(hwnd, out var bounds)) return;
-        // Clip native acrylic to the actual rounded card, not its transparent WPF shadow margins.
+        // Keep the card region in every mode, including disabled/high-contrast/unavailable fallback.
+        // Non-layered WPF shadow margins otherwise expose the native black/white window frame.
         var topLeft = _surface.PointToScreen(new Point());
         var bottomRight = _surface.PointToScreen(new Point(_surface.ActualWidth, _surface.ActualHeight));
         var dpi = VisualTreeHelper.GetDpi(_surface);
@@ -108,7 +108,27 @@ public sealed class WindowBackdropService : IDisposable
 
     private IntPtr HandleWindowMessage(IntPtr hwnd, int message, IntPtr wParam, IntPtr lParam, ref bool handled)
     {
-        if (!_disposed && message is 0x001A or 0x031A or 0x031E) // settings/theme/DWM composition changes
+        if (!_disposed && message == 0x0084 && _window.ResizeMode is ResizeMode.CanResize or ResizeMode.CanResizeWithGrip
+            && _surface.IsLoaded && _surface.ActualWidth > 0 && _surface.ActualHeight > 0)
+        {
+            // Native frame edges lie outside the clipped card. Preserve resize handles inside its edges.
+            long coordinates = lParam.ToInt64();
+            var pointer = new Point((short)(coordinates & 0xffff), (short)((coordinates >> 16) & 0xffff));
+            var topLeft = _surface.PointToScreen(new Point());
+            var bottomRight = _surface.PointToScreen(new Point(_surface.ActualWidth, _surface.ActualHeight));
+            var bounds = new Rect(topLeft, bottomRight);
+            if (bounds.Contains(pointer))
+            {
+                var dpi = VisualTreeHelper.GetDpi(_surface);
+                bool left = pointer.X < topLeft.X + 7 * dpi.DpiScaleX;
+                bool right = pointer.X >= bottomRight.X - 7 * dpi.DpiScaleX;
+                bool top = pointer.Y < topLeft.Y + 7 * dpi.DpiScaleY;
+                bool bottom = pointer.Y >= bottomRight.Y - 7 * dpi.DpiScaleY;
+                int hit = top ? (left ? 13 : right ? 14 : 12) : bottom ? (left ? 16 : right ? 17 : 15) : left ? 10 : right ? 11 : 0;
+                if (hit != 0) { handled = true; return new IntPtr(hit); }
+            }
+        }
+        if (!_disposed && message is 0x001A or 0x031A or 0x031E or 0x02E0) // settings/theme/DWM/DPI changes
             _window.Dispatcher.InvokeAsync(ApplyCurrentSettings);
         return IntPtr.Zero;
     }
@@ -125,12 +145,17 @@ public sealed class WindowBackdropService : IDisposable
         try
         {
             if (DwmIsCompositionEnabled(out bool composition) < 0 || !composition) return false;
+            int nonClient = 1; // DWMNCRP_DISABLED: WPF owns the entire borderless card.
+            DwmSetWindowAttribute(hwnd, 2, ref nonClient, sizeof(int));
             // A composited non-layered WPF window exposes client alpha to DWM without capturing any pixels.
             var margins = new MARGINS { Left = -1, Right = -1, Top = -1, Bottom = -1 };
             if (DwmExtendFrameIntoClientArea(hwnd, ref margins) < 0) return false;
-            int corner = 2; DwmSetWindowAttribute(hwnd, 33, ref corner, sizeof(int));
+            int corner = 1; DwmSetWindowAttribute(hwnd, 33, ref corner, sizeof(int)); // rounded by our card region, not the outer HWND
+            int borderColor = unchecked((int)0xFFFFFFFE); // DWMWA_COLOR_NONE
+            DwmSetWindowAttribute(hwnd, 34, ref borderColor, sizeof(int));
             int none = 1; DwmSetWindowAttribute(hwnd, 38, ref none, sizeof(int));
-            var accent = new ACCENT_POLICY { State = enabled ? 4 : 0, Flags = 2, Color = enabled ? 0x01000000u : 0u };
+            // Accent bit 4 makes the compositor respect the GDI region (also documented by DWMBlurGlass).
+            var accent = new ACCENT_POLICY { State = enabled ? 4 : 0, Flags = 2 | (1 << 4), Color = enabled ? 0x01000000u : 0u };
             IntPtr memory = Marshal.AllocHGlobal(Marshal.SizeOf<ACCENT_POLICY>());
             try
             {

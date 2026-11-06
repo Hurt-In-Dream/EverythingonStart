@@ -52,7 +52,7 @@ These components retain their MIT license and applicable third-party notices.
 - Runtime source: https://github.com/dotnet/runtime
 - WPF source: https://github.com/dotnet/wpf
 - Windows Forms source: https://github.com/dotnet/winforms
-- The runtime configuration is embedded in the single-file executable. v1.4.0 release packages use .NET and Windows Desktop runtime 10.0.13.
+- The runtime configuration is embedded in the single-file executable. v1.4.0 and v1.4.1 release packages use .NET and Windows Desktop runtime 10.0.13.
 
 ## DWMBlurGlass implementation reference
 
