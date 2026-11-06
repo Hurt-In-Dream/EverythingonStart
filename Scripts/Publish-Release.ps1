@@ -1,4 +1,7 @@
-param([string]$OutputDirectory = (Join-Path $PSScriptRoot '..\artifacts'))
+param(
+    [string]$OutputDirectory = (Join-Path $PSScriptRoot '..\artifacts'),
+    [string]$NuGetSource = 'https://api.nuget.org/v3/index.json'
+)
 
 $ErrorActionPreference = 'Stop'
 $repo = Split-Path $PSScriptRoot -Parent
@@ -20,7 +23,7 @@ foreach ($path in @($package, $binaryZip, $sourceZip, $sums)) {
     if (Test-Path -LiteralPath $path) { throw "Release output already exists; choose a fresh output directory: $path" }
 }
 New-Item -ItemType Directory -Path $output -Force | Out-Null
-& dotnet publish $project -c Release -r win-x64 --self-contained true `
+& dotnet publish $project -c Release -r win-x64 --self-contained true --source $NuGetSource `
     -p:Platform=x64 -p:PublishSingleFile=false -p:PublishTrimmed=false `
     -p:DebugType=None -p:DebugSymbols=false -o $package
 if ($LASTEXITCODE -ne 0) { throw "dotnet publish failed: $LASTEXITCODE" }

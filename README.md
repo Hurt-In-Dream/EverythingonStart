@@ -155,7 +155,8 @@ dotnet build EverythingonStart.csproj -c Release -p:Platform=x64
 pwsh -NoProfile -File .\Scripts\Publish-Release.ps1
 ```
 
-产物默认位于 `artifacts/`。详细回归测试命令见 [Tests/README.md](Tests/README.md)。
+产物默认位于 `artifacts/`。打包脚本仅为本次构建指定官方 NuGet 源，不修改全局配置；
+如需镜像，可使用 `-NuGetSource URL` 指定。详细回归测试命令见 [Tests/README.md](Tests/README.md)。
 
 ### 运行与命令行参数
 ```powershell
