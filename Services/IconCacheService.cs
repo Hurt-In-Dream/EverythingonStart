@@ -29,15 +29,14 @@ public sealed class IconCacheService
     private readonly ConcurrentDictionary<string, ImageSource> _smallIconCache = new(StringComparer.OrdinalIgnoreCase);
     private readonly ConcurrentDictionary<string, ImageSource> _largeIconCache = new(StringComparer.OrdinalIgnoreCase);
 
-    private readonly ImageSource _webIcon;
-    private readonly ImageSource _settingIcon;
+    private ImageSource _webIcon = null!;
+    private ImageSource _settingIcon = null!;
     private readonly ImageSource _defaultFolderIcon;
     private readonly ImageSource _defaultFileIcon;
 
     public IconCacheService()
     {
-        _webIcon = CreateVectorSearchBadgeIcon(Color.FromRgb(56, 189, 248));
-        _settingIcon = CreateVectorGearBadgeIcon(Color.FromRgb(20, 184, 166));
+        RefreshThemeIcons();
         _defaultFolderIcon = ExtractShellIcon("folder", isFolder: true, large: true, useAttributesOnly: true) ?? _webIcon;
         _defaultFileIcon = ExtractShellIcon(".txt", isFolder: false, large: true, useAttributesOnly: true) ?? _webIcon;
     }
@@ -85,6 +84,14 @@ public sealed class IconCacheService
                 System.Windows.Threading.DispatcherPriority.Background
             );
         });
+    }
+
+    public void RefreshThemeIcons()
+    {
+        var accent = Application.Current?.TryFindResource(ThemeResourceKeys.AccentTextBrush) as SolidColorBrush;
+        var color = accent?.Color ?? Color.FromRgb(88, 182, 234);
+        _webIcon = CreateVectorSearchBadgeIcon(color);
+        _settingIcon = CreateVectorGearBadgeIcon(color);
     }
 
     public void PopulateLargeIconAsync(SearchResultItem item)

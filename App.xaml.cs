@@ -19,6 +19,7 @@ public partial class App : System.Windows.Application
     private RegisteredWaitHandle? _toggleRegisteredWait;
     private RegisteredWaitHandle? _shutdownRegisteredWait;
     private AppSettingsService? _settingsService;
+    private AppThemeService? _themeService;
     private EverythingSearchService? _everythingService;
     private StartMenuIndexService? _startMenuService;
     private WebSuggestionService? _webSuggestionService;
@@ -97,6 +98,7 @@ public partial class App : System.Windows.Application
     private void InitializeCoreServices()
     {
         _settingsService = new AppSettingsService();
+        _themeService = AppThemeService.GetOrCreate(_settingsService);
         _everythingService = new EverythingSearchService(_settingsService.Current.EverythingInstanceName, _settingsService);
         _startMenuService = new StartMenuIndexService();
         _webSuggestionService = new WebSuggestionService(_settingsService);
@@ -261,6 +263,7 @@ public partial class App : System.Windows.Application
 
                 _winKeyHookService?.Dispose();
                 _everythingService?.Dispose();
+                _themeService?.Dispose();
                 Environment.Exit(0);
             },
             null,
@@ -274,6 +277,7 @@ public partial class App : System.Windows.Application
         using var stdout = new System.IO.StreamWriter(Console.OpenStandardOutput()) { AutoFlush = true };
         var sw = Stopwatch.StartNew();
         var settings = new AppSettingsService();
+        _themeService = AppThemeService.GetOrCreate(settings);
         using var everything = new EverythingSearchService(settings.Current.EverythingInstanceName, settings);
         var startMenu = new StartMenuIndexService();
         startMenu.RebuildAppIndex();
@@ -440,6 +444,7 @@ public partial class App : System.Windows.Application
         _shutdownWaitHandle?.Dispose();
         _winKeyHookService?.Dispose();
         _everythingService?.Dispose();
+        _themeService?.Dispose();
         _instanceMutex?.Dispose();
         base.OnExit(e);
     }

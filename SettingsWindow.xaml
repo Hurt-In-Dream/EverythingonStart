@@ -33,7 +33,7 @@
                 <Setter.Value>
                     <ControlTemplate TargetType="ResizeGrip">
                         <Grid Background="Transparent">
-                            <Path Data="M 3,10 L 10,3 M 7,10 L 10,7" Stroke="#697381" StrokeThickness="1" />
+                            <Path Data="M 3,10 L 10,3 M 7,10 L 10,7" Stroke="{DynamicResource Theme.StrongBorderBrush}" StrokeThickness="1" />
                         </Grid>
                     </ControlTemplate>
                 </Setter.Value>
@@ -41,7 +41,7 @@
         </Style>
 
         <Style TargetType="ComboBoxItem">
-            <Setter Property="Foreground" Value="#EDF0F5" />
+            <Setter Property="Foreground" Value="{DynamicResource Theme.TextPrimaryBrush}" />
             <Setter Property="Padding" Value="10,8" />
             <Setter Property="HorizontalContentAlignment" Value="Stretch" />
             <Setter Property="Template">
@@ -52,10 +52,10 @@
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsHighlighted" Value="True">
-                                <Setter TargetName="ItemBorder" Property="Background" Value="#363C46" />
+                                <Setter TargetName="ItemBorder" Property="Background" Value="{DynamicResource Theme.HoverBrush}" />
                             </Trigger>
                             <Trigger Property="IsSelected" Value="True">
-                                <Setter TargetName="ItemBorder" Property="Background" Value="#294558" />
+                                <Setter TargetName="ItemBorder" Property="Background" Value="{DynamicResource Theme.AccentTintBrush}" />
                             </Trigger>
                             <Trigger Property="IsEnabled" Value="False">
                                 <Setter Property="Opacity" Value="0.45" />
@@ -67,9 +67,9 @@
         </Style>
 
         <Style TargetType="ComboBox">
-            <Setter Property="Background" Value="#1C1F24" />
-            <Setter Property="Foreground" Value="#EDF0F5" />
-            <Setter Property="BorderBrush" Value="#454B55" />
+            <Setter Property="Background" Value="{DynamicResource Theme.ControlBrush}" />
+            <Setter Property="Foreground" Value="{DynamicResource Theme.TextPrimaryBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource Theme.BorderBrush}" />
             <Setter Property="BorderThickness" Value="1" />
             <Setter Property="MinHeight" Value="34" />
             <Setter Property="FontSize" Value="12.5" />
@@ -91,7 +91,7 @@
                                 <ToggleButton.Template>
                                     <ControlTemplate TargetType="ToggleButton">
                                         <Border Background="Transparent">
-                                            <Path Data="M 0,0 L 4,4 L 8,0" Stroke="#A9B2C0" StrokeThickness="1.4"
+                                            <Path Data="M 0,0 L 4,4 L 8,0" Stroke="{DynamicResource Theme.TextMutedBrush}" StrokeThickness="1.4"
                                                   Width="8" Height="4" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,13,0" />
                                         </Border>
                                     </ControlTemplate>
@@ -99,7 +99,7 @@
                             </ToggleButton>
                             <Popup x:Name="PART_Popup" Placement="Bottom" AllowsTransparency="True" Focusable="False"
                                    IsOpen="{TemplateBinding IsDropDownOpen}">
-                                <Border Background="#252A32" BorderBrush="#454B55" BorderThickness="1" CornerRadius="8"
+                                <Border Background="{DynamicResource Theme.SurfaceBrush}" BorderBrush="{DynamicResource Theme.BorderBrush}" BorderThickness="1" CornerRadius="8"
                                         Padding="4" Margin="0,4,0,0"
                                         MinWidth="{Binding ActualWidth, RelativeSource={RelativeSource TemplatedParent}}">
                                     <ScrollViewer MaxHeight="{TemplateBinding MaxDropDownHeight}" CanContentScroll="True"
@@ -111,13 +111,13 @@
                         </Grid>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="ComboBorder" Property="BorderBrush" Value="#6F7A89" />
+                                <Setter TargetName="ComboBorder" Property="BorderBrush" Value="{DynamicResource Theme.StrongBorderBrush}" />
                             </Trigger>
                             <Trigger Property="IsKeyboardFocusWithin" Value="True">
-                                <Setter TargetName="ComboBorder" Property="BorderBrush" Value="#58B6EA" />
+                                <Setter TargetName="ComboBorder" Property="BorderBrush" Value="{DynamicResource Theme.AccentTextBrush}" />
                             </Trigger>
                             <Trigger Property="IsDropDownOpen" Value="True">
-                                <Setter TargetName="ComboBorder" Property="BorderBrush" Value="#58B6EA" />
+                                <Setter TargetName="ComboBorder" Property="BorderBrush" Value="{DynamicResource Theme.AccentTextBrush}" />
                             </Trigger>
                             <Trigger Property="IsEnabled" Value="False">
                                 <Setter Property="Opacity" Value="0.5" />
@@ -147,7 +147,7 @@
                                     <Thumb>
                                         <Thumb.Template>
                                             <ControlTemplate TargetType="Thumb">
-                                                <Border CornerRadius="3" Background="#59616E" Margin="1,0" />
+                                                <Border CornerRadius="3" Background="{DynamicResource Theme.StrongBorderBrush}" Margin="1,0" />
                                             </ControlTemplate>
                                         </Thumb.Template>
                                     </Thumb>
@@ -168,7 +168,7 @@
 
         <!-- 左侧导航栏 RadioButton 样式 -->
         <Style x:Key="NavTabRadioStyle" TargetType="RadioButton">
-            <Setter Property="Foreground" Value="#CFD4DE" />
+            <Setter Property="Foreground" Value="{DynamicResource Theme.TextSecondaryBrush}" />
             <Setter Property="Background" Value="Transparent" />
             <Setter Property="Padding" Value="14,10" />
             <Setter Property="Margin" Value="0,0,0,6" />
@@ -189,7 +189,7 @@
                                         Width="3"
                                         Height="16"
                                         CornerRadius="1.5"
-                                        Background="#58B6EA"
+                                        Background="{DynamicResource Theme.AccentBrush}"
                                         HorizontalAlignment="Left"
                                         VerticalAlignment="Center"
                                         Margin="-8,0,0,0"
@@ -199,14 +199,14 @@
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="NavBorder" Property="Background" Value="#2D3038" />
-                                <Setter TargetName="NavBorder" Property="BorderBrush" Value="#1EFFFFFF" />
+                                <Setter TargetName="NavBorder" Property="Background" Value="{DynamicResource Theme.HoverBrush}" />
+                                <Setter TargetName="NavBorder" Property="BorderBrush" Value="{DynamicResource Theme.Alpha1EBrush}" />
                             </Trigger>
                             <Trigger Property="IsChecked" Value="True">
-                                <Setter TargetName="NavBorder" Property="Background" Value="#353943" />
-                                <Setter TargetName="NavBorder" Property="BorderBrush" Value="#2BFFFFFF" />
+                                <Setter TargetName="NavBorder" Property="Background" Value="{DynamicResource Theme.HoverBrush}" />
+                                <Setter TargetName="NavBorder" Property="BorderBrush" Value="{DynamicResource Theme.Alpha2BBrush}" />
                                 <Setter TargetName="ActiveBar" Property="Visibility" Value="Visible" />
-                                <Setter Property="Foreground" Value="#FFFFFF" />
+                                <Setter Property="Foreground" Value="{DynamicResource Theme.TextPrimaryBrush}" />
                                 <Setter Property="FontWeight" Value="SemiBold" />
                             </Trigger>
                         </ControlTemplate.Triggers>
@@ -217,10 +217,10 @@
 
         <!-- 深色输入框样式 -->
         <Style x:Key="DarkTextBoxStyle" TargetType="TextBox">
-            <Setter Property="Background" Value="#1A1B1E" />
-            <Setter Property="Foreground" Value="#F1F3F7" />
-            <Setter Property="CaretBrush" Value="#58B6EA" />
-            <Setter Property="BorderBrush" Value="#2EFFFFFF" />
+            <Setter Property="Background" Value="{DynamicResource Theme.InputBrush}" />
+            <Setter Property="Foreground" Value="{DynamicResource Theme.TextPrimaryBrush}" />
+            <Setter Property="CaretBrush" Value="{DynamicResource Theme.AccentTextBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource Theme.Alpha2EBrush}" />
             <Setter Property="BorderThickness" Value="1" />
             <Setter Property="Padding" Value="10,6" />
             <Setter Property="FontSize" Value="12.5" />
@@ -239,7 +239,7 @@
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsKeyboardFocused" Value="True">
-                                <Setter TargetName="Bd" Property="BorderBrush" Value="#58B6EA" />
+                                <Setter TargetName="Bd" Property="BorderBrush" Value="{DynamicResource Theme.AccentTextBrush}" />
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -249,8 +249,8 @@
 
         <!-- 深色按钮样式 -->
         <Style x:Key="DarkActionButtonStyle" TargetType="Button">
-            <Setter Property="Background" Value="#32353E" />
-            <Setter Property="Foreground" Value="#ECEFF4" />
+            <Setter Property="Background" Value="{DynamicResource Theme.ButtonBrush}" />
+            <Setter Property="Foreground" Value="{DynamicResource Theme.TextPrimaryBrush}" />
             <Setter Property="Padding" Value="14,6" />
             <Setter Property="FontSize" Value="12.5" />
             <Setter Property="Height" Value="36" />
@@ -262,7 +262,7 @@
                     <ControlTemplate TargetType="Button">
                         <Border x:Name="BtnBd"
                                 Background="{TemplateBinding Background}"
-                                BorderBrush="#26FFFFFF"
+                                BorderBrush="{DynamicResource Theme.Alpha26Brush}"
                                 BorderThickness="1"
                                 CornerRadius="6"
                                 Padding="{TemplateBinding Padding}">
@@ -270,11 +270,11 @@
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="BtnBd" Property="Background" Value="#3E424D" />
-                                <Setter TargetName="BtnBd" Property="BorderBrush" Value="#38FFFFFF" />
+                                <Setter TargetName="BtnBd" Property="Background" Value="{DynamicResource Theme.HoverBrush}" />
+                                <Setter TargetName="BtnBd" Property="BorderBrush" Value="{DynamicResource Theme.Alpha38Brush}" />
                             </Trigger>
                             <Trigger Property="IsPressed" Value="True">
-                                <Setter TargetName="BtnBd" Property="Background" Value="#282A30" />
+                                <Setter TargetName="BtnBd" Property="Background" Value="{DynamicResource Theme.PressedBrush}" />
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -284,15 +284,15 @@
 
         <!-- 主强调按钮样式 -->
         <Style x:Key="PrimaryButtonStyle" TargetType="Button" BasedOn="{StaticResource DarkActionButtonStyle}">
-            <Setter Property="Background" Value="#B4C3D0" />
-            <Setter Property="Foreground" Value="#141619" />
+            <Setter Property="Background" Value="{DynamicResource Theme.PrimaryButtonBrush}" />
+            <Setter Property="Foreground" Value="{DynamicResource Theme.PrimaryForegroundBrush}" />
             <Setter Property="FontWeight" Value="SemiBold" />
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="Button">
                         <Border x:Name="BtnBd"
                                 Background="{TemplateBinding Background}"
-                                BorderBrush="#D0DCE5"
+                                BorderBrush="{DynamicResource Theme.PrimaryBorderBrush}"
                                 BorderThickness="1"
                                 CornerRadius="6"
                                 Padding="{TemplateBinding Padding}">
@@ -300,10 +300,10 @@
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="BtnBd" Property="Background" Value="#C5D3DF" />
+                                <Setter TargetName="BtnBd" Property="Background" Value="{DynamicResource Theme.PrimaryHoverBrush}" />
                             </Trigger>
                             <Trigger Property="IsPressed" Value="True">
-                                <Setter TargetName="BtnBd" Property="Background" Value="#9FB0BF" />
+                                <Setter TargetName="BtnBd" Property="Background" Value="{DynamicResource Theme.PrimaryPressedBrush}" />
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -322,7 +322,7 @@
                                     <RepeatButton Command="{x:Static Slider.DecreaseLarge}" Focusable="False">
                                         <RepeatButton.Template>
                                             <ControlTemplate TargetType="RepeatButton">
-                                                <Border Background="#58B6EA" Height="3" CornerRadius="1.5" />
+                                                <Border Background="{DynamicResource Theme.AccentBrush}" Height="3" CornerRadius="1.5" />
                                             </ControlTemplate>
                                         </RepeatButton.Template>
                                     </RepeatButton>
@@ -331,7 +331,7 @@
                                     <Thumb Width="14" Height="14" Cursor="Hand">
                                         <Thumb.Template>
                                             <ControlTemplate TargetType="Thumb">
-                                                <Ellipse Fill="#58B6EA" Stroke="#20242A" StrokeThickness="2" />
+                                                <Ellipse Fill="{DynamicResource Theme.AccentBrush}" Stroke="{DynamicResource Theme.AccentForegroundBrush}" StrokeThickness="2" />
                                             </ControlTemplate>
                                         </Thumb.Template>
                                     </Thumb>
@@ -340,7 +340,7 @@
                                     <RepeatButton Command="{x:Static Slider.IncreaseLarge}" Focusable="False">
                                         <RepeatButton.Template>
                                             <ControlTemplate TargetType="RepeatButton">
-                                                <Border Background="#4A515D" Height="3" CornerRadius="1.5" />
+                                                <Border Background="{DynamicResource Theme.BorderBrush}" Height="3" CornerRadius="1.5" />
                                             </ControlTemplate>
                                         </RepeatButton.Template>
                                     </RepeatButton>
@@ -359,7 +359,7 @@
 
         <!-- 复选框样式 -->
         <Style TargetType="CheckBox">
-            <Setter Property="Foreground" Value="#E6E9EF" />
+            <Setter Property="Foreground" Value="{DynamicResource Theme.TextPrimaryBrush}" />
             <Setter Property="FontSize" Value="13" />
             <Setter Property="Margin" Value="0,5" />
             <Setter Property="Cursor" Value="Hand" />
@@ -380,22 +380,22 @@
                                 <ColumnDefinition Width="*" />
                             </Grid.ColumnDefinitions>
                             <Border x:Name="CheckBorder" Width="16" Height="16" CornerRadius="4"
-                                    Background="#1C1F24" BorderBrush="#697381" BorderThickness="1" VerticalAlignment="Top" Margin="0,2,0,0">
-                                <Path x:Name="CheckMark" Data="M 2,6 L 5,9 L 11,3" Stroke="#15212A" StrokeThickness="1.8"
+                                    Background="{DynamicResource Theme.ControlBrush}" BorderBrush="{DynamicResource Theme.StrongBorderBrush}" BorderThickness="1" VerticalAlignment="Top" Margin="0,2,0,0">
+                                <Path x:Name="CheckMark" Data="M 2,6 L 5,9 L 11,3" Stroke="{DynamicResource Theme.AccentForegroundBrush}" StrokeThickness="1.8"
                                       Margin="1" Visibility="Collapsed" />
                             </Border>
                             <ContentPresenter Grid.Column="1" Margin="8,0,0,0" VerticalAlignment="Center" />
                         </Grid>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="CheckBorder" Property="BorderBrush" Value="#58B6EA" />
+                                <Setter TargetName="CheckBorder" Property="BorderBrush" Value="{DynamicResource Theme.AccentTextBrush}" />
                             </Trigger>
                             <Trigger Property="IsKeyboardFocused" Value="True">
-                                <Setter TargetName="CheckBorder" Property="BorderBrush" Value="#58B6EA" />
+                                <Setter TargetName="CheckBorder" Property="BorderBrush" Value="{DynamicResource Theme.AccentTextBrush}" />
                             </Trigger>
                             <Trigger Property="IsChecked" Value="True">
-                                <Setter TargetName="CheckBorder" Property="Background" Value="#58B6EA" />
-                                <Setter TargetName="CheckBorder" Property="BorderBrush" Value="#58B6EA" />
+                                <Setter TargetName="CheckBorder" Property="Background" Value="{DynamicResource Theme.AccentBrush}" />
+                                <Setter TargetName="CheckBorder" Property="BorderBrush" Value="{DynamicResource Theme.AccentTextBrush}" />
                                 <Setter TargetName="CheckMark" Property="Visibility" Value="Visible" />
                             </Trigger>
                             <Trigger Property="IsEnabled" Value="False">
@@ -409,8 +409,8 @@
 
         <!-- 分组卡片样式 -->
         <Style x:Key="SectionCardStyle" TargetType="Border">
-            <Setter Property="Background" Value="#27292E" />
-            <Setter Property="BorderBrush" Value="#1CFFFFFF" />
+            <Setter Property="Background" Value="{DynamicResource Theme.CardBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource Theme.Alpha1CBrush}" />
             <Setter Property="BorderThickness" Value="1" />
             <Setter Property="CornerRadius" Value="8" />
             <Setter Property="Padding" Value="20,18" />
@@ -420,8 +420,8 @@
 
     <Border Margin="10"
             CornerRadius="12"
-            Background="#1E2024"
-            BorderBrush="#33FFFFFF"
+            Background="{DynamicResource Theme.WindowBackgroundBrush}"
+            BorderBrush="{DynamicResource Theme.Alpha33Brush}"
             BorderThickness="1">
         <Border.Effect>
             <DropShadowEffect BlurRadius="24" ShadowDepth="6" Opacity="0.6" Color="#000000" />
@@ -436,9 +436,9 @@
 
             <!-- 顶部标题栏（可拖拽） -->
             <Border Grid.Row="0"
-                    Background="#23252A"
+                    Background="{DynamicResource Theme.SurfaceBrush}"
                     CornerRadius="12,12,0,0"
-                    BorderBrush="#1AFFFFFF"
+                    BorderBrush="{DynamicResource Theme.Alpha1ABrush}"
                     BorderThickness="0,0,0,1"
                     MouseLeftButtonDown="OnTitleBarMouseLeftButtonDown">
                 <Grid Margin="18,0,14,0">
@@ -456,19 +456,19 @@
                         <Path Grid.Column="0" Width="16"
                               Height="16"
                               Stretch="Uniform"
-                              Fill="#58B6EA"
+                              Fill="{DynamicResource Theme.AccentTextBrush}"
                               Margin="0,0,9,0"
                               VerticalAlignment="Center"
                               Data="F0 M13.414,2.1 A2,2 0 0 0 10.586,2.1 L8.686,4 H6 A2,2 0 0 0 4,6 V8.686 L2.1,10.586 A2,2 0 0 0 2.1,13.414 L4,15.314 V18 A2,2 0 0 0 6,20 H8.686 L10.586,21.9 A2,2 0 0 0 13.414,21.9 L15.314,20 H18 A2,2 0 0 0 20,18 V15.314 L21.9,13.414 A2,2 0 0 0 21.9,10.586 L20,8.686 V6 A2,2 0 0 0 18,4 H15.314 L13.414,2.1 Z M12,3.515 L14.182,5.697 A1,1 0 0 0 14.889,5.99 H18 V9.111 A1,1 0 0 0 18.293,9.818 L20.485,12 L18.293,14.182 A1,1 0 0 0 18,14.889 V18 H14.889 A1,1 0 0 0 14.182,18.293 L12,20.485 L9.818,18.293 A1,1 0 0 0 9.111,18 H6 V14.889 A1,1 0 0 0 5.707,14.182 L3.515,12 L5.707,9.818 A1,1 0 0 0 6,9.111 V6 H9.111 A1,1 0 0 0 9.818,5.697 L12,3.515 Z M12,8.5 A3.5,3.5 0 1 0 12,15.5 A3.5,3.5 0 1 0 12,8.5 Z M12,10.5 A1.5,1.5 0 1 1 12,13.5 A1.5,1.5 0 1 1 12,10.5 Z" />
                         <TextBlock Grid.Column="1" Text="设置中心"
-                                   Foreground="#F5F6F8"
+                                   Foreground="{DynamicResource Theme.TextPrimaryBrush}"
                                    FontSize="16"
                                    FontWeight="SemiBold"
                                    VerticalAlignment="Center" />
                         <TextBlock x:Name="HeaderStatusText"
                                     Grid.Column="2"
                                     Text="EverythingonStart · 搜索偏好与系统集成"
-                                   Foreground="#8D94A2"
+                                   Foreground="{DynamicResource Theme.TextMutedBrush}"
                                    FontSize="12"
                                     Margin="16,1,16,0"
                                     VerticalAlignment="Center"
@@ -486,7 +486,7 @@
                         <Path Width="10"
                               Height="10"
                               Stretch="Uniform"
-                              Stroke="#D4D7DD"
+                              Stroke="{DynamicResource Theme.TextSecondaryBrush}"
                               StrokeThickness="1.6"
                               Data="M 1,1 L 9,9 M 9,1 L 1,9" />
                     </Button>
@@ -522,7 +522,7 @@
                                  Checked="OnNavTabChecked" />
                 </StackPanel>
 
-                <Border Grid.Column="1" Background="#1CFFFFFF" Margin="0,10" />
+                <Border Grid.Column="1" Background="{DynamicResource Theme.Alpha1CBrush}" Margin="0,10" />
 
                 <!-- 右侧分页内容区 -->
                 <ScrollViewer x:Name="SettingsScrollViewer" Grid.Column="2"
@@ -532,16 +532,16 @@
                     <Grid>
                         <!-- 分页 1：筛选器与文件类型 -->
                         <StackPanel x:Name="PageFilters" Visibility="Visible">
-                            <TextBlock Text="文件类型与筛选" Foreground="#F3F5F8" FontSize="22" FontWeight="SemiBold" />
-                            <TextBlock Text="选择搜索范围，管理各分类使用的文件类型。" Foreground="#98A0AE" FontSize="12" Margin="0,5,0,18" />
+                            <TextBlock Text="文件类型与筛选" Foreground="{DynamicResource Theme.TextPrimaryBrush}" FontSize="22" FontWeight="SemiBold" />
+                            <TextBlock Text="选择搜索范围，管理各分类使用的文件类型。" Foreground="{DynamicResource Theme.TextMutedBrush}" FontSize="12" Margin="0,5,0,18" />
                             <Border Style="{StaticResource SectionCardStyle}">
                                 <StackPanel>
                                     <TextBlock Text="分类筛选方式"
-                                               Foreground="#F3F5F8"
+                                               Foreground="{DynamicResource Theme.TextPrimaryBrush}"
                                                FontSize="13.5"
                                                FontWeight="SemiBold" />
                                     <TextBlock Text="使用内置预设、同步 Everything 规则，或自行定义文件类型。"
-                                               Foreground="#98A0AE"
+                                               Foreground="{DynamicResource Theme.TextMutedBrush}"
                                                FontSize="12"
                                                Margin="0,4,0,10"
                                                TextWrapping="Wrap" />
@@ -551,7 +551,7 @@
                                             <ColumnDefinition Width="165" />
                                             <ColumnDefinition Width="*" />
                                         </Grid.ColumnDefinitions>
-                                        <TextBlock Grid.Column="0" Text="打开时的搜索分类" Foreground="#D8DCE4" VerticalAlignment="Center" />
+                                        <TextBlock Grid.Column="0" Text="打开时的搜索分类" Foreground="{DynamicResource Theme.TextSecondaryBrush}" VerticalAlignment="Center" />
                                         <ComboBox x:Name="CmbInitialSearchItemInFilters"
                                                   Grid.Column="1"
                                                   Height="30"
@@ -566,7 +566,7 @@
                                             <ColumnDefinition Width="165" />
                                             <ColumnDefinition Width="*" />
                                         </Grid.ColumnDefinitions>
-                                        <TextBlock Grid.Column="0" Text="默认筛选方式" Foreground="#D8DCE4" VerticalAlignment="Center" />
+                                        <TextBlock Grid.Column="0" Text="默认筛选方式" Foreground="{DynamicResource Theme.TextSecondaryBrush}" VerticalAlignment="Center" />
                                         <ComboBox x:Name="CmbGlobalFilterMode"
                                                   Grid.Column="1"
                                                   Height="30"
@@ -585,7 +585,7 @@
 
                                     <TextBlock x:Name="TxtDetectedEverythingConfig"
                                                Text="Everything 配置状态：正在检测..."
-                                               Foreground="#7CC5F0"
+                                               Foreground="{DynamicResource Theme.AccentTextBrush}"
                                                FontSize="11.5"
                                                Margin="0,6,0,0"
                                                TextWrapping="Wrap" />
@@ -602,7 +602,7 @@
                                         </Grid.ColumnDefinitions>
                                         <TextBlock Grid.Column="0"
                                                     Text="应用"
-                                                   Foreground="#F3F5F8"
+                                                   Foreground="{DynamicResource Theme.TextPrimaryBrush}"
                                                    FontSize="13"
                                                    FontWeight="SemiBold"
                                                    VerticalAlignment="Center" />
@@ -616,14 +616,14 @@
                                         </ComboBox>
                                     </Grid>
                                     <TextBlock Text="自定义扩展名或 Everything 搜索语法（用分号分隔）"
-                                               Foreground="#98A0AE"
+                                               Foreground="{DynamicResource Theme.TextMutedBrush}"
                                                FontSize="11.5"
                                                Margin="0,0,0,5" />
                                     <TextBox x:Name="TxtCustomAppsFilter"
                                              Style="{StaticResource DarkTextBoxStyle}"
                                              TextChanged="OnFilterTextChanged" />
                                     <TextBlock x:Name="TxtAppsPreview"
-                                               Foreground="#8490A0"
+                                               Foreground="{DynamicResource Theme.TextDisabledBrush}"
                                                FontSize="11.5"
                                                Margin="0,5,0,4"
                                                TextTrimming="CharacterEllipsis" />
@@ -644,7 +644,7 @@
                                         </Grid.ColumnDefinitions>
                                         <TextBlock Grid.Column="0"
                                                     Text="文档"
-                                                   Foreground="#F3F5F8"
+                                                   Foreground="{DynamicResource Theme.TextPrimaryBrush}"
                                                    FontSize="13"
                                                    FontWeight="SemiBold"
                                                    VerticalAlignment="Center" />
@@ -664,7 +664,7 @@
                                               Unchecked="OnFilterPreviewNeedsUpdate"
                                               Margin="0,0,0,6" />
                                     <TextBlock Text="自定义文档扩展名或 Everything 搜索语法"
-                                               Foreground="#98A0AE"
+                                               Foreground="{DynamicResource Theme.TextMutedBrush}"
                                                FontSize="11.5"
                                                Margin="0,0,0,5" />
                                     <TextBox x:Name="TxtCustomDocsFilter"
@@ -675,7 +675,7 @@
                                              VerticalContentAlignment="Top"
                                              TextChanged="OnFilterTextChanged" />
                                     <TextBlock x:Name="TxtDocsPreview"
-                                               Foreground="#8490A0"
+                                               Foreground="{DynamicResource Theme.TextDisabledBrush}"
                                                FontSize="11.5"
                                                Margin="0,5,0,0"
                                                TextTrimming="CharacterEllipsis" />
@@ -692,7 +692,7 @@
                                         </Grid.ColumnDefinitions>
                                         <TextBlock Grid.Column="0"
                                                     Text="文件夹"
-                                                   Foreground="#F3F5F8"
+                                                   Foreground="{DynamicResource Theme.TextPrimaryBrush}"
                                                    FontSize="13"
                                                    FontWeight="SemiBold"
                                                    VerticalAlignment="Center" />
@@ -706,14 +706,14 @@
                                         </ComboBox>
                                     </Grid>
                                     <TextBlock Text="自定义目录规则，例如 folder: !*\node_modules\*"
-                                               Foreground="#98A0AE"
+                                               Foreground="{DynamicResource Theme.TextMutedBrush}"
                                                FontSize="11.5"
                                                Margin="0,0,0,5" />
                                     <TextBox x:Name="TxtCustomFoldersFilter"
                                              Style="{StaticResource DarkTextBoxStyle}"
                                              TextChanged="OnFilterTextChanged" />
                                     <TextBlock x:Name="TxtFoldersPreview"
-                                               Foreground="#8490A0"
+                                               Foreground="{DynamicResource Theme.TextDisabledBrush}"
                                                FontSize="11.5"
                                                Margin="0,5,0,0"
                                                TextTrimming="CharacterEllipsis" />
@@ -730,7 +730,7 @@
                                         </Grid.ColumnDefinitions>
                                         <TextBlock Grid.Column="0"
                                                     Text="照片"
-                                                   Foreground="#F3F5F8"
+                                                   Foreground="{DynamicResource Theme.TextPrimaryBrush}"
                                                    FontSize="13"
                                                    FontWeight="SemiBold"
                                                    VerticalAlignment="Center" />
@@ -744,14 +744,14 @@
                                         </ComboBox>
                                     </Grid>
                                     <TextBlock Text="自定义图片扩展名或 Everything 搜索语法"
-                                               Foreground="#98A0AE"
+                                               Foreground="{DynamicResource Theme.TextMutedBrush}"
                                                FontSize="11.5"
                                                Margin="0,0,0,5" />
                                     <TextBox x:Name="TxtCustomPhotosFilter"
                                              Style="{StaticResource DarkTextBoxStyle}"
                                              TextChanged="OnFilterTextChanged" />
                                     <TextBlock x:Name="TxtPhotosPreview"
-                                               Foreground="#8490A0"
+                                               Foreground="{DynamicResource Theme.TextDisabledBrush}"
                                                FontSize="11.5"
                                                Margin="0,5,0,0"
                                                TextTrimming="CharacterEllipsis" />
@@ -762,21 +762,21 @@
                             <Border Style="{StaticResource SectionCardStyle}">
                                 <StackPanel>
                                     <TextBlock Text="附加文件类型"
-                                               Foreground="#F3F5F8"
+                                               Foreground="{DynamicResource Theme.TextPrimaryBrush}"
                                                FontSize="13"
                                                FontWeight="SemiBold"
                                                Margin="0,0,0,8" />
 
-                                    <TextBlock Text="音频文件扩展名：" Foreground="#98A0AE" FontSize="11.5" Margin="0,2,0,4" />
+                                    <TextBlock Text="音频文件扩展名：" Foreground="{DynamicResource Theme.TextMutedBrush}" FontSize="11.5" Margin="0,2,0,4" />
                                     <TextBox x:Name="TxtCustomAudioFilter" Style="{StaticResource DarkTextBoxStyle}" Margin="0,0,0,8" />
 
-                                    <TextBlock Text="视频文件扩展名：" Foreground="#98A0AE" FontSize="11.5" Margin="0,2,0,4" />
+                                    <TextBlock Text="视频文件扩展名：" Foreground="{DynamicResource Theme.TextMutedBrush}" FontSize="11.5" Margin="0,2,0,4" />
                                     <TextBox x:Name="TxtCustomVideoFilter" Style="{StaticResource DarkTextBoxStyle}" Margin="0,0,0,8" />
 
-                                    <TextBlock Text="压缩包文件扩展名：" Foreground="#98A0AE" FontSize="11.5" Margin="0,2,0,4" />
+                                    <TextBlock Text="压缩包文件扩展名：" Foreground="{DynamicResource Theme.TextMutedBrush}" FontSize="11.5" Margin="0,2,0,4" />
                                     <TextBox x:Name="TxtCustomCompressedFilter" Style="{StaticResource DarkTextBoxStyle}" Margin="0,0,0,8" />
 
-                                    <TextBlock Text="代码与脚本文件扩展名：" Foreground="#98A0AE" FontSize="11.5" Margin="0,2,0,4" />
+                                    <TextBlock Text="代码与脚本文件扩展名：" Foreground="{DynamicResource Theme.TextMutedBrush}" FontSize="11.5" Margin="0,2,0,4" />
                                     <TextBox x:Name="TxtCustomCodeFilter" Style="{StaticResource DarkTextBoxStyle}" />
                                 </StackPanel>
                             </Border>
@@ -784,12 +784,12 @@
 
                         <!-- 分页 2：排序与搜索选项 -->
                         <StackPanel x:Name="PageSortAndSearch" Visibility="Collapsed">
-                            <TextBlock Text="排序与搜索" Foreground="#F3F5F8" FontSize="22" FontWeight="SemiBold" />
-                            <TextBlock Text="调整结果排序、匹配规则与搜索数据源。" Foreground="#98A0AE" FontSize="12" Margin="0,5,0,18" />
+                            <TextBlock Text="排序与搜索" Foreground="{DynamicResource Theme.TextPrimaryBrush}" FontSize="22" FontWeight="SemiBold" />
+                            <TextBlock Text="调整结果排序、匹配规则与搜索数据源。" Foreground="{DynamicResource Theme.TextMutedBrush}" FontSize="12" Margin="0,5,0,18" />
                             <Border Style="{StaticResource SectionCardStyle}">
                                 <StackPanel>
                                     <TextBlock Text="排序方式与附加类型筛选"
-                                               Foreground="#F3F5F8"
+                                               Foreground="{DynamicResource Theme.TextPrimaryBrush}"
                                                FontSize="13.5"
                                                FontWeight="SemiBold"
                                                Margin="0,0,0,10" />
@@ -799,7 +799,7 @@
                                             <ColumnDefinition Width="165" />
                                             <ColumnDefinition Width="*" />
                                         </Grid.ColumnDefinitions>
-                                        <TextBlock Grid.Column="0" Text="Everything 结果排序方式：" Foreground="#D8DCE4" VerticalAlignment="Center" />
+                                        <TextBlock Grid.Column="0" Text="Everything 结果排序方式：" Foreground="{DynamicResource Theme.TextSecondaryBrush}" VerticalAlignment="Center" />
                                         <ComboBox x:Name="CmbSortOrder" Grid.Column="1" Height="30">
                                             <ComboBoxItem Content="跟随 Everything 设置 (读取 Everything.ini)" />
                                             <ComboBoxItem Content="智能默认 (运行次数优先 + 名称升序)" />
@@ -823,7 +823,7 @@
                                             <ColumnDefinition Width="165" />
                                             <ColumnDefinition Width="*" />
                                         </Grid.ColumnDefinitions>
-                                        <TextBlock Grid.Column="0" Text="当前附加文件类型筛选：" Foreground="#D8DCE4" VerticalAlignment="Center" />
+                                        <TextBlock Grid.Column="0" Text="当前附加文件类型筛选：" Foreground="{DynamicResource Theme.TextSecondaryBrush}" VerticalAlignment="Center" />
                                         <ComboBox x:Name="CmbExtraTypeFilter" Grid.Column="1" Height="30">
                                             <ComboBoxItem Content="不限附加类型 (显示全部匹配项)" />
                                             <ComboBoxItem Content="仅音频文件 (Audio)" />
@@ -839,7 +839,7 @@
                             <Border Style="{StaticResource SectionCardStyle}">
                                 <StackPanel>
                                     <TextBlock Text="Everything 搜索匹配修饰项"
-                                               Foreground="#F3F5F8"
+                                               Foreground="{DynamicResource Theme.TextPrimaryBrush}"
                                                FontSize="13.5"
                                                FontWeight="SemiBold"
                                                Margin="0,0,0,8" />
@@ -858,7 +858,7 @@
                             <Border Style="{StaticResource SectionCardStyle}">
                                 <StackPanel>
                                     <TextBlock Text="搜索结果条数与联机数据源"
-                                               Foreground="#F3F5F8"
+                                               Foreground="{DynamicResource Theme.TextPrimaryBrush}"
                                                FontSize="13.5"
                                                FontWeight="SemiBold"
                                                Margin="0,0,0,10" />
@@ -869,9 +869,9 @@
                                             <ColumnDefinition Width="*" />
                                             <ColumnDefinition Width="50" />
                                         </Grid.ColumnDefinitions>
-                                        <TextBlock Grid.Column="0" Text="“全部”视图每组最大显示条数：" Foreground="#D8DCE4" VerticalAlignment="Center" />
+                                        <TextBlock Grid.Column="0" Text="“全部”视图每组最大显示条数：" Foreground="{DynamicResource Theme.TextSecondaryBrush}" VerticalAlignment="Center" />
                                         <Slider x:Name="SldMaxPerGroup" Grid.Column="1" Minimum="3" Maximum="15" TickFrequency="1" IsSnapToTickEnabled="True" VerticalAlignment="Center" ValueChanged="OnSliderValueChanged" />
-                                        <TextBlock x:Name="TxtMaxPerGroupVal" Grid.Column="2" Text="6" Foreground="#58B6EA" HorizontalAlignment="Right" VerticalAlignment="Center" />
+                                        <TextBlock x:Name="TxtMaxPerGroupVal" Grid.Column="2" Text="6" Foreground="{DynamicResource Theme.AccentTextBrush}" HorizontalAlignment="Right" VerticalAlignment="Center" />
                                     </Grid>
 
                                     <Grid Margin="0,0,0,10">
@@ -880,9 +880,9 @@
                                             <ColumnDefinition Width="*" />
                                             <ColumnDefinition Width="50" />
                                         </Grid.ColumnDefinitions>
-                                        <TextBlock Grid.Column="0" Text="单分类页面最大加载结果数：" Foreground="#D8DCE4" VerticalAlignment="Center" />
+                                        <TextBlock Grid.Column="0" Text="单分类页面最大加载结果数：" Foreground="{DynamicResource Theme.TextSecondaryBrush}" VerticalAlignment="Center" />
                                         <Slider x:Name="SldMaxSingleCategory" Grid.Column="1" Minimum="30" Maximum="500" TickFrequency="10" IsSnapToTickEnabled="True" VerticalAlignment="Center" ValueChanged="OnSliderValueChanged" />
-                                        <TextBlock x:Name="TxtMaxSingleCategoryVal" Grid.Column="2" Text="120" Foreground="#58B6EA" HorizontalAlignment="Right" VerticalAlignment="Center" />
+                                        <TextBlock x:Name="TxtMaxSingleCategoryVal" Grid.Column="2" Text="120" Foreground="{DynamicResource Theme.AccentTextBrush}" HorizontalAlignment="Right" VerticalAlignment="Center" />
                                     </Grid>
 
                                     <Grid Margin="0,0,0,8">
@@ -890,7 +890,7 @@
                                             <ColumnDefinition Width="165" />
                                             <ColumnDefinition Width="*" />
                                         </Grid.ColumnDefinitions>
-                                        <TextBlock Grid.Column="0" Text="默认 Web 搜索引擎：" Foreground="#D8DCE4" VerticalAlignment="Center" />
+                                        <TextBlock Grid.Column="0" Text="默认 Web 搜索引擎：" Foreground="{DynamicResource Theme.TextSecondaryBrush}" VerticalAlignment="Center" />
                                         <ComboBox x:Name="CmbWebSearchEngine" Grid.Column="1" Height="30">
                                             <ComboBoxItem Content="Bing (必应)" />
                                             <ComboBoxItem Content="Google" />
@@ -907,12 +907,12 @@
 
                         <!-- 分页 3：呼出与交互设置 -->
                         <StackPanel x:Name="PageInteraction" Visibility="Collapsed">
-                            <TextBlock Text="呼出与交互" Foreground="#F3F5F8" FontSize="22" FontWeight="SemiBold" />
-                            <TextBlock Text="设置 Win 键行为，以及搜索面板的打开和关闭方式。" Foreground="#98A0AE" FontSize="12" Margin="0,5,0,18" />
+                            <TextBlock Text="呼出与交互" Foreground="{DynamicResource Theme.TextPrimaryBrush}" FontSize="22" FontWeight="SemiBold" />
+                            <TextBlock Text="设置 Win 键行为，以及搜索面板的打开和关闭方式。" Foreground="{DynamicResource Theme.TextMutedBrush}" FontSize="12" Margin="0,5,0,18" />
                             <Border Style="{StaticResource SectionCardStyle}">
                                 <StackPanel>
                                     <TextBlock Text="Win 键呼出模式与初始搜索项"
-                                               Foreground="#F3F5F8"
+                                               Foreground="{DynamicResource Theme.TextPrimaryBrush}"
                                                FontSize="13.5"
                                                FontWeight="SemiBold"
                                                Margin="0,0,0,10" />
@@ -922,7 +922,7 @@
                                             <ColumnDefinition Width="165" />
                                             <ColumnDefinition Width="*" />
                                         </Grid.ColumnDefinitions>
-                                        <TextBlock Grid.Column="0" Text="Win 键触发方式：" Foreground="#D8DCE4" VerticalAlignment="Center" />
+                                        <TextBlock Grid.Column="0" Text="Win 键触发方式：" Foreground="{DynamicResource Theme.TextSecondaryBrush}" VerticalAlignment="Center" />
                                         <ComboBox x:Name="CmbTriggerMode" Grid.Column="1" Height="30">
                                             <ComboBoxItem Content="单按 Win 键直接呼出搜索面板" />
                                             <ComboBoxItem Content="打开开始菜单后，输入时接管（默认）" />
@@ -934,7 +934,7 @@
                                             <ColumnDefinition Width="165" />
                                             <ColumnDefinition Width="*" />
                                         </Grid.ColumnDefinitions>
-                                        <TextBlock Grid.Column="0" Text="打开主界面后搜索项：" Foreground="#D8DCE4" VerticalAlignment="Center" />
+                                        <TextBlock Grid.Column="0" Text="打开主界面后搜索项：" Foreground="{DynamicResource Theme.TextSecondaryBrush}" VerticalAlignment="Center" />
                                         <ComboBox x:Name="CmbInitialSearchItem"
                                                   Grid.Column="1"
                                                   Height="30"
@@ -949,7 +949,7 @@
                             <Border Style="{StaticResource SectionCardStyle}">
                                 <StackPanel>
                                     <TextBlock Text="导航按钮、全屏任务栏与焦点行为"
-                                               Foreground="#F3F5F8"
+                                               Foreground="{DynamicResource Theme.TextPrimaryBrush}"
                                                FontSize="13.5"
                                                FontWeight="SemiBold"
                                                Margin="0,0,0,8" />
@@ -971,12 +971,32 @@
 
                         <!-- 分页 4：外观尺寸与系统 -->
                         <StackPanel x:Name="PageAppearance" Visibility="Collapsed">
-                            <TextBlock Text="外观与系统" Foreground="#F3F5F8" FontSize="22" FontWeight="SemiBold" />
-                            <TextBlock Text="调整窗口外观，管理启动方式与 Everything 路径。" Foreground="#98A0AE" FontSize="12" Margin="0,5,0,18" />
+                            <TextBlock Text="外观与系统" Foreground="{DynamicResource Theme.TextPrimaryBrush}" FontSize="22" FontWeight="SemiBold" />
+                            <TextBlock Text="调整窗口外观，管理启动方式与 Everything 路径。" Foreground="{DynamicResource Theme.TextMutedBrush}" FontSize="12" Margin="0,5,0,18" />
+                            <Border Style="{StaticResource SectionCardStyle}">
+                                <StackPanel>
+                                    <TextBlock Text="主题与配色" Foreground="{DynamicResource Theme.TextPrimaryBrush}" FontSize="13.5" FontWeight="SemiBold" Margin="0,0,0,10" />
+                                    <Grid Margin="0,0,0,8">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="165" />
+                                            <ColumnDefinition Width="*" />
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Text="应用主题" Foreground="{DynamicResource Theme.TextSecondaryBrush}" VerticalAlignment="Center" />
+                                        <ComboBox x:Name="CmbThemeMode" Grid.Column="1" Height="34">
+                                            <ComboBoxItem Content="跟随系统" />
+                                            <ComboBoxItem Content="浅色" />
+                                            <ComboBoxItem Content="深色" />
+                                        </ComboBox>
+                                    </Grid>
+                                    <CheckBox x:Name="ChkUseSystemAccentColor" Content="使用系统强调色" />
+                                    <TextBlock Text="保存后应用到主搜索界面和设置中心。主题与强调色可独立跟随系统，系统变化自动同步；关闭系统强调色时使用蓝色。"
+                                               Foreground="{DynamicResource Theme.TextMutedBrush}" FontSize="12" Margin="0,6,0,0" TextWrapping="Wrap" />
+                                </StackPanel>
+                            </Border>
                             <Border Style="{StaticResource SectionCardStyle}">
                                 <StackPanel>
                                     <TextBlock Text="窗口尺寸与多设备自适应缩放"
-                                               Foreground="#F3F5F8"
+                                               Foreground="{DynamicResource Theme.TextPrimaryBrush}"
                                                FontSize="13.5"
                                                FontWeight="SemiBold"
                                                Margin="0,0,0,8" />
@@ -993,9 +1013,9 @@
                                             <ColumnDefinition Width="*" />
                                             <ColumnDefinition Width="56" />
                                         </Grid.ColumnDefinitions>
-                                        <TextBlock Grid.Column="0" Text="手动固定缩放倍率：" Foreground="#D8DCE4" VerticalAlignment="Center" />
+                                        <TextBlock Grid.Column="0" Text="手动固定缩放倍率：" Foreground="{DynamicResource Theme.TextSecondaryBrush}" VerticalAlignment="Center" />
                                         <Slider x:Name="SldManualScale" Grid.Column="1" Minimum="75" Maximum="125" TickFrequency="5" IsSnapToTickEnabled="True" VerticalAlignment="Center" ValueChanged="OnSliderValueChanged" />
-                                        <TextBlock x:Name="TxtManualScaleVal" Grid.Column="2" Text="100%" Foreground="#58B6EA" HorizontalAlignment="Right" VerticalAlignment="Center" />
+                                        <TextBlock x:Name="TxtManualScaleVal" Grid.Column="2" Text="100%" Foreground="{DynamicResource Theme.AccentTextBrush}" HorizontalAlignment="Right" VerticalAlignment="Center" />
                                     </Grid>
 
                                     <StackPanel Margin="0,2,0,0">
@@ -1003,7 +1023,7 @@
                                                 Style="{StaticResource DarkActionButtonStyle}"
                                                 Click="OnReprobeStartMenuSizeClick" />
                                         <TextBlock x:Name="TxtCurrentBoundsSource"
-                                                   Foreground="#8D94A2"
+                                                   Foreground="{DynamicResource Theme.TextMutedBrush}"
                                                    FontSize="12"
                                                    VerticalAlignment="Center"
                                                     Margin="0,8,0,0" />
@@ -1014,7 +1034,7 @@
                             <Border Style="{StaticResource SectionCardStyle}">
                                 <StackPanel>
                                     <TextBlock Text="视觉透明度与动画效果"
-                                               Foreground="#F3F5F8"
+                                               Foreground="{DynamicResource Theme.TextPrimaryBrush}"
                                                FontSize="13.5"
                                                FontWeight="SemiBold"
                                                Margin="0,0,0,8" />
@@ -1025,9 +1045,9 @@
                                             <ColumnDefinition Width="*" />
                                             <ColumnDefinition Width="56" />
                                         </Grid.ColumnDefinitions>
-                                        <TextBlock Grid.Column="0" Text="主面板背景不透明度：" Foreground="#D8DCE4" VerticalAlignment="Center" />
+                                        <TextBlock Grid.Column="0" Text="主面板背景不透明度：" Foreground="{DynamicResource Theme.TextSecondaryBrush}" VerticalAlignment="Center" />
                                         <Slider x:Name="SldWindowOpacity" Grid.Column="1" Minimum="75" Maximum="100" TickFrequency="1" IsSnapToTickEnabled="True" VerticalAlignment="Center" ValueChanged="OnSliderValueChanged" />
-                                        <TextBlock x:Name="TxtWindowOpacityVal" Grid.Column="2" Text="95%" Foreground="#58B6EA" HorizontalAlignment="Right" VerticalAlignment="Center" />
+                                        <TextBlock x:Name="TxtWindowOpacityVal" Grid.Column="2" Text="95%" Foreground="{DynamicResource Theme.AccentTextBrush}" HorizontalAlignment="Right" VerticalAlignment="Center" />
                                     </Grid>
 
                                     <CheckBox x:Name="ChkEnablePopupAnim" Content="启用搜索面板弹出时的平滑上浮与缩放缓动动画" />
@@ -1037,7 +1057,7 @@
                             <Border Style="{StaticResource SectionCardStyle}">
                                 <StackPanel>
                                     <TextBlock Text="系统启动与 Everything 路径集成"
-                                               Foreground="#F3F5F8"
+                                               Foreground="{DynamicResource Theme.TextPrimaryBrush}"
                                                FontSize="13.5"
                                                FontWeight="SemiBold"
                                                Margin="0,0,0,8" />
@@ -1049,7 +1069,7 @@
                                             <ColumnDefinition Width="175" />
                                             <ColumnDefinition Width="*" />
                                         </Grid.ColumnDefinitions>
-                                        <TextBlock Grid.Column="0" Text="Everything 命名实例名：" Foreground="#D8DCE4" VerticalAlignment="Center" />
+                                        <TextBlock Grid.Column="0" Text="Everything 命名实例名：" Foreground="{DynamicResource Theme.TextSecondaryBrush}" VerticalAlignment="Center" />
                                         <TextBox x:Name="TxtInstanceName" Grid.Column="1" Style="{StaticResource DarkTextBoxStyle}" ToolTip="留空将自动探测默认实例与 1.5a 实例" />
                                     </Grid>
 
@@ -1059,7 +1079,7 @@
                                             <ColumnDefinition Width="*" />
                                             <ColumnDefinition Width="Auto" />
                                         </Grid.ColumnDefinitions>
-                                        <TextBlock Grid.Column="0" Text="Everything.exe 程序路径：" Foreground="#D8DCE4" VerticalAlignment="Center" />
+                                        <TextBlock Grid.Column="0" Text="Everything.exe 程序路径：" Foreground="{DynamicResource Theme.TextSecondaryBrush}" VerticalAlignment="Center" />
                                         <TextBox x:Name="TxtEverythingExePath" Grid.Column="1" Style="{StaticResource DarkTextBoxStyle}" Margin="0,0,8,0" ToolTip="留空将自动检索本机 Everything.exe" />
                                         <Button Grid.Column="2" Content="浏览..." Style="{StaticResource DarkActionButtonStyle}" Click="OnBrowseEverythingExeClick" />
                                     </Grid>
@@ -1070,7 +1090,7 @@
                                             <ColumnDefinition Width="*" />
                                             <ColumnDefinition Width="Auto" />
                                         </Grid.ColumnDefinitions>
-                                        <TextBlock Grid.Column="0" Text="Everything Filters.csv 路径：" Foreground="#D8DCE4" VerticalAlignment="Center" />
+                                        <TextBlock Grid.Column="0" Text="Everything Filters.csv 路径：" Foreground="{DynamicResource Theme.TextSecondaryBrush}" VerticalAlignment="Center" />
                                         <TextBox x:Name="TxtFiltersCsvPath" Grid.Column="1" Style="{StaticResource DarkTextBoxStyle}" Margin="0,0,8,0" ToolTip="留空将自动读取 %APPDATA%\Everything\Filters.csv" />
                                         <Button Grid.Column="2" Content="浏览..." Style="{StaticResource DarkActionButtonStyle}" Click="OnBrowseFiltersCsvClick" />
                                     </Grid>
@@ -1083,9 +1103,9 @@
 
             <!-- 底部操作栏 -->
             <Border Grid.Row="2"
-                    Background="#23252A"
+                    Background="{DynamicResource Theme.SurfaceBrush}"
                     CornerRadius="0,0,12,12"
-                    BorderBrush="#1AFFFFFF"
+                    BorderBrush="{DynamicResource Theme.Alpha1ABrush}"
                     BorderThickness="0,1,0,0"
                     Padding="18,12">
                 <Grid>

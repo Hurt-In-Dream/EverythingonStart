@@ -34,7 +34,7 @@
                                     <Thumb>
                                         <Thumb.Template>
                                             <ControlTemplate TargetType="Thumb">
-                                                <Border CornerRadius="3" Background="#44FFFFFF" Margin="1,0" />
+                                                <Border CornerRadius="3" Background="{DynamicResource Theme.Alpha44Brush}" Margin="1,0" />
                                             </ControlTemplate>
                                         </Thumb.Template>
                                     </Thumb>
@@ -48,8 +48,8 @@
 
         <!-- 顶部胶囊标签 RadioButton 样式（带鼠标浮动高亮与上浮动画） -->
         <Style x:Key="CategoryPillStyle" TargetType="RadioButton">
-            <Setter Property="Foreground" Value="#E4E6EB" />
-            <Setter Property="Background" Value="#2D2F34" />
+            <Setter Property="Foreground" Value="{DynamicResource Theme.TextPrimaryBrush}" />
+            <Setter Property="Background" Value="{DynamicResource Theme.ButtonBrush}" />
             <Setter Property="Padding" Value="13,5" />
             <Setter Property="Margin" Value="0,0,7,0" />
             <Setter Property="FontSize" Value="12.5" />
@@ -63,7 +63,7 @@
                                 CornerRadius="14"
                                 Padding="{TemplateBinding Padding}"
                                 BorderThickness="1"
-                                BorderBrush="#14FFFFFF"
+                                BorderBrush="{DynamicResource Theme.Alpha14Brush}"
                                 RenderTransformOrigin="0.5,0.5">
                             <Border.RenderTransform>
                                 <TransformGroup>
@@ -75,8 +75,8 @@
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="PillBorder" Property="Background" Value="#3B3E46" />
-                                <Setter TargetName="PillBorder" Property="BorderBrush" Value="#2AFFFFFF" />
+                                <Setter TargetName="PillBorder" Property="Background" Value="{DynamicResource Theme.HoverBrush}" />
+                                <Setter TargetName="PillBorder" Property="BorderBrush" Value="{DynamicResource Theme.Alpha2ABrush}" />
                                 <Trigger.EnterActions>
                                     <BeginStoryboard>
                                         <Storyboard>
@@ -139,9 +139,9 @@
                                 </Trigger.ExitActions>
                             </Trigger>
                             <Trigger Property="IsChecked" Value="True">
-                                <Setter TargetName="PillBorder" Property="Background" Value="#B4C3D0" />
-                                <Setter TargetName="PillBorder" Property="BorderBrush" Value="#D0DCE5" />
-                                <Setter Property="Foreground" Value="#141619" />
+                                <Setter TargetName="PillBorder" Property="Background" Value="{DynamicResource Theme.PrimaryButtonBrush}" />
+                                <Setter TargetName="PillBorder" Property="BorderBrush" Value="{DynamicResource Theme.PrimaryBorderBrush}" />
+                                <Setter Property="Foreground" Value="{DynamicResource Theme.PrimaryForegroundBrush}" />
                                 <Setter Property="FontWeight" Value="SemiBold" />
                             </Trigger>
                         </ControlTemplate.Triggers>
@@ -152,8 +152,8 @@
 
         <!-- 顶部胶囊动作按钮样式（与分类胶囊视觉一致，带鼠标浮动高亮与上浮动画） -->
         <Style x:Key="CategoryActionPillButtonStyle" TargetType="Button">
-            <Setter Property="Foreground" Value="#E4E6EB" />
-            <Setter Property="Background" Value="#2D2F34" />
+            <Setter Property="Foreground" Value="{DynamicResource Theme.TextPrimaryBrush}" />
+            <Setter Property="Background" Value="{DynamicResource Theme.ButtonBrush}" />
             <Setter Property="Padding" Value="13,5" />
             <Setter Property="Margin" Value="0,0,7,0" />
             <Setter Property="FontSize" Value="12.5" />
@@ -167,7 +167,7 @@
                                 CornerRadius="14"
                                 Padding="{TemplateBinding Padding}"
                                 BorderThickness="1"
-                                BorderBrush="#14FFFFFF"
+                                BorderBrush="{DynamicResource Theme.Alpha14Brush}"
                                 RenderTransformOrigin="0.5,0.5">
                             <Border.RenderTransform>
                                 <TransformGroup>
@@ -179,8 +179,8 @@
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="PillBorder" Property="Background" Value="#3B3E46" />
-                                <Setter TargetName="PillBorder" Property="BorderBrush" Value="#2AFFFFFF" />
+                                <Setter TargetName="PillBorder" Property="Background" Value="{DynamicResource Theme.HoverBrush}" />
+                                <Setter TargetName="PillBorder" Property="BorderBrush" Value="{DynamicResource Theme.Alpha2ABrush}" />
                                 <Trigger.EnterActions>
                                     <BeginStoryboard>
                                         <Storyboard>
@@ -243,8 +243,8 @@
                                 </Trigger.ExitActions>
                             </Trigger>
                             <Trigger Property="IsPressed" Value="True">
-                                <Setter TargetName="PillBorder" Property="Background" Value="#B4C3D0" />
-                                <Setter Property="Foreground" Value="#141619" />
+                                <Setter TargetName="PillBorder" Property="Background" Value="{DynamicResource Theme.PrimaryButtonBrush}" />
+                                <Setter Property="Foreground" Value="{DynamicResource Theme.PrimaryForegroundBrush}" />
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -255,7 +255,7 @@
         <!-- 图标按钮样式（带鼠标浮动高亮与微缩放动画） -->
         <Style x:Key="IconButtonStyle" TargetType="Button">
             <Setter Property="Background" Value="Transparent" />
-            <Setter Property="Foreground" Value="#D4D7DD" />
+            <Setter Property="Foreground" Value="{DynamicResource Theme.TextSecondaryBrush}" />
             <Setter Property="BorderThickness" Value="0" />
             <Setter Property="Width" Value="30" />
             <Setter Property="Height" Value="30" />
@@ -280,8 +280,8 @@
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="BtnBorder" Property="Background" Value="#32353D" />
-                                <Setter TargetName="BtnBorder" Property="BorderBrush" Value="#22FFFFFF" />
+                                <Setter TargetName="BtnBorder" Property="Background" Value="{DynamicResource Theme.ButtonBrush}" />
+                                <Setter TargetName="BtnBorder" Property="BorderBrush" Value="{DynamicResource Theme.Alpha22Brush}" />
                                 <Trigger.EnterActions>
                                     <BeginStoryboard>
                                         <Storyboard>
@@ -344,7 +344,7 @@
                                 </Trigger.ExitActions>
                             </Trigger>
                             <Trigger Property="IsPressed" Value="True">
-                                <Setter TargetName="BtnBorder" Property="Background" Value="#24262C" />
+                                <Setter TargetName="BtnBorder" Property="Background" Value="{DynamicResource Theme.PressedBrush}" />
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -355,7 +355,7 @@
         <!-- 右侧详情面板快捷操作按钮样式（带鼠标浮动高亮卡片与平滑位移） -->
         <Style x:Key="ActionRowButtonStyle" TargetType="Button">
             <Setter Property="Background" Value="Transparent" />
-            <Setter Property="Foreground" Value="#ECEEF2" />
+            <Setter Property="Foreground" Value="{DynamicResource Theme.TextPrimaryBrush}" />
             <Setter Property="HorizontalContentAlignment" Value="Stretch" />
             <Setter Property="Padding" Value="12,9" />
             <Setter Property="Margin" Value="0,1" />
@@ -382,8 +382,8 @@
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="RowBorder" Property="Background" Value="#34373F" />
-                                <Setter TargetName="RowBorder" Property="BorderBrush" Value="#22FFFFFF" />
+                                <Setter TargetName="RowBorder" Property="Background" Value="{DynamicResource Theme.HoverBrush}" />
+                                <Setter TargetName="RowBorder" Property="BorderBrush" Value="{DynamicResource Theme.Alpha22Brush}" />
                                 <Trigger.EnterActions>
                                     <BeginStoryboard>
                                         <Storyboard>
@@ -462,7 +462,7 @@
                                 </Trigger.ExitActions>
                             </Trigger>
                             <Trigger Property="IsPressed" Value="True">
-                                <Setter TargetName="RowBorder" Property="Background" Value="#282A30" />
+                                <Setter TargetName="RowBorder" Property="Background" Value="{DynamicResource Theme.PressedBrush}" />
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -483,7 +483,7 @@
         <!-- 静态缓存阴影层（仅在尺寸改变时光栅化一次） -->
         <Border Margin="10"
                 CornerRadius="12"
-                Background="#FF1F2023"
+                Background="{DynamicResource Theme.SearchShadowBrush}"
                 IsHitTestVisible="False">
             <Border.CacheMode>
                 <BitmapCache RenderAtScale="1" SnapsToDevicePixels="True" />
@@ -501,8 +501,8 @@
         <Border x:Name="RootCardBorder"
                 Margin="10"
                 CornerRadius="12"
-                Background="#F21F2023"
-                BorderBrush="#2EFFFFFF"
+                Background="{DynamicResource Theme.SearchBackgroundBrush}"
+                BorderBrush="{DynamicResource Theme.Alpha2EBrush}"
                 BorderThickness="1">
 
         <Grid x:Name="RootContentGrid" Margin="22,17,22,18">
@@ -520,8 +520,8 @@
                     Grid.Row="0"
                     Height="38"
                     CornerRadius="19"
-                    Background="#18191B"
-                    BorderBrush="#33FFFFFF"
+                    Background="{DynamicResource Theme.InputBrush}"
+                    BorderBrush="{DynamicResource Theme.Alpha33Brush}"
                     BorderThickness="1"
                     Padding="14,0,10,0">
                 <Grid>
@@ -536,7 +536,7 @@
                           Width="15"
                           Height="15"
                           Stretch="Uniform"
-                          Stroke="#58B6EA"
+                          Stroke="{DynamicResource Theme.AccentTextBrush}"
                           StrokeThickness="1.8"
                           VerticalAlignment="Center"
                           Margin="0,0,10,0"
@@ -547,8 +547,8 @@
                              Grid.Column="1"
                              Background="Transparent"
                              BorderThickness="0"
-                             Foreground="#F5F6F8"
-                             CaretBrush="#58B6EA"
+                             Foreground="{DynamicResource Theme.TextPrimaryBrush}"
+                             CaretBrush="{DynamicResource Theme.AccentTextBrush}"
                              FontSize="14"
                              VerticalContentAlignment="Center"
                              TextChanged="OnSearchTextChanged" />
@@ -557,7 +557,7 @@
                     <TextBlock x:Name="PlaceholderText"
                                Grid.Column="1"
                                Text="在此处输入以搜索文件 (Everything)、应用、设置与 Web..."
-                               Foreground="#7A7E87"
+                               Foreground="{DynamicResource Theme.TextDisabledBrush}"
                                FontSize="13.5"
                                VerticalAlignment="Center"
                                IsHitTestVisible="False" />
@@ -574,7 +574,7 @@
                         <Path Width="10"
                               Height="10"
                               Stretch="Uniform"
-                              Stroke="#A6ABB4"
+                              Stroke="{DynamicResource Theme.TextMutedBrush}"
                               StrokeThickness="1.6"
                               Data="M 1,1 L 9,9 M 9,1 L 1,9" />
                     </Button>
@@ -599,7 +599,7 @@
                     <Path Width="13"
                           Height="13"
                           Stretch="Uniform"
-                          Stroke="#D6D9E0"
+                          Stroke="{DynamicResource Theme.TextSecondaryBrush}"
                           StrokeThickness="1.6"
                           Data="M 13,6.5 L 1,6.5 M 6,1.5 L 1,6.5 L 6,11.5" />
                 </Button>
@@ -637,7 +637,7 @@
                             <Path Width="11"
                                   Height="11"
                                   Stretch="Uniform"
-                                  Stroke="#58B6EA"
+                                  Stroke="{DynamicResource Theme.AccentTextBrush}"
                                   StrokeThickness="1.5"
                                   Margin="0,0,5,0"
                                   VerticalAlignment="Center"
@@ -660,7 +660,7 @@
                             <Path Width="11"
                                   Height="11"
                                   Stretch="Uniform"
-                                  Stroke="#58B6EA"
+                                  Stroke="{DynamicResource Theme.AccentTextBrush}"
                                   StrokeThickness="1.5"
                                   Margin="0,0,5,0"
                                   VerticalAlignment="Center"
@@ -681,7 +681,7 @@
                         <Path Width="15"
                               Height="15"
                               Stretch="Uniform"
-                              Fill="#D6D9E0"
+                              Fill="{DynamicResource Theme.TextSecondaryBrush}"
                               Data="{StaticResource MingCuteSettings4LineGeometry}" />
                     </Button>
 
@@ -693,7 +693,7 @@
                         <Path Width="15"
                               Height="4"
                               Stretch="Uniform"
-                              Fill="#D6D9E0"
+                              Fill="{DynamicResource Theme.TextSecondaryBrush}"
                               Data="M 2,2 A 1.5,1.5 0 1 1 1.99,2 M 8,2 A 1.5,1.5 0 1 1 7.99,2 M 14,2 A 1.5,1.5 0 1 1 13.99,2" />
                     </Button>
                 </StackPanel>
@@ -758,11 +758,11 @@
                                                    Text="{Binding HeaderTitle}"
                                                    FontSize="13"
                                                    FontWeight="SemiBold"
-                                                   Foreground="#F3F4F6" />
+                                                   Foreground="{DynamicResource Theme.TextPrimaryBrush}" />
                                         <TextBlock Grid.Column="1"
                                                    Text="{Binding HeaderCountBadge}"
                                                    FontSize="11.5"
-                                                   Foreground="#8C919C"
+                                                   Foreground="{DynamicResource Theme.TextMutedBrush}"
                                                    VerticalAlignment="Bottom"
                                                    Margin="8,0,0,1" />
                                         <Path Grid.Column="3"
@@ -770,7 +770,7 @@
                                               Width="6"
                                               Height="10"
                                               Stretch="Uniform"
-                                              Stroke="#9BA1AE"
+                                              Stroke="{DynamicResource Theme.TextMutedBrush}"
                                               StrokeThickness="1.5"
                                               VerticalAlignment="Center"
                                               Data="M 1,1 L 5,5 L 1,9" />
@@ -801,14 +801,14 @@
                                                     <Setter Property="Visibility" Value="Collapsed" />
                                                 </DataTrigger>
                                                 <DataTrigger Binding="{Binding IsBestMatchCard}" Value="True">
-                                                    <Setter Property="Background" Value="#2B2D31" />
-                                                    <Setter Property="BorderBrush" Value="#14FFFFFF" />
+                                                    <Setter Property="Background" Value="{DynamicResource Theme.SurfaceBrush}" />
+                                                    <Setter Property="BorderBrush" Value="{DynamicResource Theme.Alpha14Brush}" />
                                                     <Setter Property="Padding" Value="12,10" />
                                                     <Setter Property="Margin" Value="0,2,0,4" />
                                                 </DataTrigger>
                                                 <DataTrigger Binding="{Binding RelativeSource={RelativeSource AncestorType=ListBoxItem}, Path=IsMouseOver}" Value="True">
-                                                    <Setter Property="Background" Value="#32353E" />
-                                                    <Setter Property="BorderBrush" Value="#24FFFFFF" />
+                                                    <Setter Property="Background" Value="{DynamicResource Theme.ButtonBrush}" />
+                                                    <Setter Property="BorderBrush" Value="{DynamicResource Theme.Alpha24Brush}" />
                                                     <DataTrigger.EnterActions>
                                                         <BeginStoryboard>
                                                             <Storyboard>
@@ -879,8 +879,8 @@
                                                     </DataTrigger.ExitActions>
                                                 </DataTrigger>
                                                 <DataTrigger Binding="{Binding RelativeSource={RelativeSource AncestorType=ListBoxItem}, Path=IsSelected}" Value="True">
-                                                    <Setter Property="Background" Value="#363942" />
-                                                    <Setter Property="BorderBrush" Value="#28FFFFFF" />
+                                                    <Setter Property="Background" Value="{DynamicResource Theme.HoverBrush}" />
+                                                    <Setter Property="BorderBrush" Value="{DynamicResource Theme.Alpha28Brush}" />
                                                 </DataTrigger>
                                             </Style.Triggers>
                                         </Style>
@@ -896,7 +896,7 @@
                                         <Border Width="3"
                                                 Height="16"
                                                 CornerRadius="1.5"
-                                                Background="#58B6EA"
+                                                Background="{DynamicResource Theme.AccentBrush}"
                                                 HorizontalAlignment="Left"
                                                 VerticalAlignment="Center"
                                                 Margin="-10,0,0,0">
@@ -995,12 +995,12 @@
                                         <!-- 条目文字 -->
                                         <StackPanel Grid.Column="1" VerticalAlignment="Center">
                                             <TextBlock Text="{Binding Item.Title}"
-                                                       Foreground="#F2F4F7"
+                                                       Foreground="{DynamicResource Theme.TextPrimaryBrush}"
                                                        FontSize="13"
                                                        TextTrimming="CharacterEllipsis" />
 
                                             <TextBlock Text="{Binding Item.Subtitle}"
-                                                       Foreground="#989EA9"
+                                                       Foreground="{DynamicResource Theme.TextMutedBrush}"
                                                        FontSize="11.5"
                                                        Margin="0,2,0,0"
                                                        TextTrimming="CharacterEllipsis">
@@ -1017,7 +1017,7 @@
                                             </TextBlock>
 
                                             <TextBlock Text="{Binding Item.FormattedModifiedLine}"
-                                                       Foreground="#828894"
+                                                       Foreground="{DynamicResource Theme.TextDisabledBrush}"
                                                        FontSize="11"
                                                        Margin="0,1,0,0"
                                                        TextTrimming="CharacterEllipsis">
@@ -1047,7 +1047,7 @@
                 <!-- 中间细分隔线 -->
                 <Border Grid.Column="1"
                         Width="1"
-                        Background="#1FFFFFFF"
+                        Background="{DynamicResource Theme.Alpha1FBrush}"
                         HorizontalAlignment="Center"
                         Margin="0,4" />
 
@@ -1055,8 +1055,8 @@
                 <Border x:Name="PreviewCardBorder"
                         Grid.Column="2"
                         CornerRadius="8"
-                        Background="#28292D"
-                        BorderBrush="#1AFFFFFF"
+                        Background="{DynamicResource Theme.SurfaceBrush}"
+                        BorderBrush="{DynamicResource Theme.Alpha1ABrush}"
                         BorderThickness="1"
                         Padding="22,16,22,16">
                     <Grid x:Name="PreviewContentGrid">
@@ -1090,8 +1090,8 @@
                                 <Style TargetType="Border">
                                     <Style.Triggers>
                                         <Trigger Property="IsMouseOver" Value="True">
-                                            <Setter Property="Background" Value="#34363D" />
-                                            <Setter Property="BorderBrush" Value="#26FFFFFF" />
+                                            <Setter Property="Background" Value="{DynamicResource Theme.HoverBrush}" />
+                                            <Setter Property="BorderBrush" Value="{DynamicResource Theme.Alpha26Brush}" />
                                             <Trigger.EnterActions>
                                                 <BeginStoryboard>
                                                     <Storyboard>
@@ -1231,7 +1231,7 @@
 
                                 <TextBlock x:Name="PreviewTitleText"
                                            Text="选择条目查看详情"
-                                           Foreground="#F5F6F8"
+                                           Foreground="{DynamicResource Theme.TextPrimaryBrush}"
                                            FontSize="16"
                                            FontWeight="SemiBold"
                                            TextAlignment="Center"
@@ -1240,7 +1240,7 @@
 
                                 <TextBlock x:Name="PreviewSubtitleText"
                                            Text=""
-                                           Foreground="#A0A6B2"
+                                           Foreground="{DynamicResource Theme.TextMutedBrush}"
                                            FontSize="12"
                                            TextAlignment="Center"
                                            TextTrimming="CharacterEllipsis"
@@ -1251,7 +1251,7 @@
 
                         <!-- 中部文件位置、修改时间、状态属性区 -->
                         <StackPanel Grid.Row="1">
-                            <Border Height="1" Background="#24FFFFFF" Margin="0,0,0,14" />
+                            <Border Height="1" Background="{DynamicResource Theme.Alpha24Brush}" Margin="0,0,0,14" />
 
                             <Grid Margin="2,0,2,10">
                                 <Grid.ColumnDefinitions>
@@ -1260,12 +1260,12 @@
                                 </Grid.ColumnDefinitions>
                                 <TextBlock Grid.Column="0"
                                            Text="位置"
-                                           Foreground="#949AA6"
+                                           Foreground="{DynamicResource Theme.TextMutedBrush}"
                                            FontSize="12" />
                                 <TextBlock x:Name="PreviewLocationText"
                                            Grid.Column="1"
                                            Text="-"
-                                           Foreground="#D5D8DF"
+                                           Foreground="{DynamicResource Theme.TextSecondaryBrush}"
                                            FontSize="12"
                                            TextWrapping="Wrap"
                                            MaxHeight="54" />
@@ -1278,12 +1278,12 @@
                                 </Grid.ColumnDefinitions>
                                 <TextBlock Grid.Column="0"
                                            Text="上次修改时间"
-                                           Foreground="#949AA6"
+                                           Foreground="{DynamicResource Theme.TextMutedBrush}"
                                            FontSize="12" />
                                 <TextBlock x:Name="PreviewModifiedText"
                                            Grid.Column="1"
                                            Text="-"
-                                           Foreground="#D5D8DF"
+                                           Foreground="{DynamicResource Theme.TextSecondaryBrush}"
                                            FontSize="12" />
                             </Grid>
 
@@ -1294,22 +1294,22 @@
                                 </Grid.ColumnDefinitions>
                                 <TextBlock Grid.Column="0"
                                            Text="状态"
-                                           Foreground="#949AA6"
+                                           Foreground="{DynamicResource Theme.TextMutedBrush}"
                                            FontSize="12" />
                                 <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
                                     <Ellipse Width="7"
                                              Height="7"
-                                             Fill="#38BDF8"
+                                             Fill="{DynamicResource Theme.AccentTextBrush}"
                                              VerticalAlignment="Center"
                                              Margin="0,0,7,0" />
                                     <TextBlock x:Name="PreviewStatusText"
                                                Text="-"
-                                               Foreground="#D5D8DF"
+                                               Foreground="{DynamicResource Theme.TextSecondaryBrush}"
                                                FontSize="12" />
                                 </StackPanel>
                             </Grid>
 
-                            <Border Height="1" Background="#24FFFFFF" Margin="0,0,0,10" />
+                            <Border Height="1" Background="{DynamicResource Theme.Alpha24Brush}" Margin="0,0,0,10" />
                         </StackPanel>
 
                         <!-- 底部快捷操作列表（还原截图：打开、管理员取得所有权、打开文件位置、复制路径） -->
@@ -1327,12 +1327,12 @@
                                           Width="14"
                                           Height="14"
                                           Stretch="Uniform"
-                                          Stroke="#D6D9E0"
+                                          Stroke="{DynamicResource Theme.TextSecondaryBrush}"
                                           StrokeThickness="1.4"
                                           HorizontalAlignment="Left"
                                           Data="M 8,1 L 13,1 L 13,6 M 13,1 L 6,8 M 11,8.5 L 11,12.5 L 1.5,12.5 L 1.5,3 L 5.5,3" />
                                     <TextBlock Grid.Column="1" Text="打开" FontSize="12.5" VerticalAlignment="Center" />
-                                    <TextBlock Grid.Column="2" Text="Enter" FontSize="11" Foreground="#7A808C" VerticalAlignment="Center" />
+                                    <TextBlock Grid.Column="2" Text="Enter" FontSize="11" Foreground="{DynamicResource Theme.TextDisabledBrush}" VerticalAlignment="Center" />
                                 </Grid>
                             </Button>
 
@@ -1349,12 +1349,12 @@
                                           Width="14"
                                           Height="14"
                                           Stretch="Uniform"
-                                          Stroke="#D6D9E0"
+                                          Stroke="{DynamicResource Theme.TextSecondaryBrush}"
                                           StrokeThickness="1.4"
                                           HorizontalAlignment="Left"
                                           Data="M 7,1 L 13,3.5 L 13,7.5 C 13,10.8 10.4,13.4 7,14.5 C 3.6,13.4 1,10.8 1,7.5 L 1,3.5 Z" />
                                     <TextBlock x:Name="AdminActionLabel" Grid.Column="1" Text="管理员取得所有权" FontSize="12.5" VerticalAlignment="Center" />
-                                    <TextBlock Grid.Column="2" Text="Ctrl+Shift+Enter" FontSize="11" Foreground="#7A808C" VerticalAlignment="Center" />
+                                    <TextBlock Grid.Column="2" Text="Ctrl+Shift+Enter" FontSize="11" Foreground="{DynamicResource Theme.TextDisabledBrush}" VerticalAlignment="Center" />
                                 </Grid>
                             </Button>
 
@@ -1371,12 +1371,12 @@
                                           Width="14"
                                           Height="14"
                                           Stretch="Uniform"
-                                          Stroke="#D6D9E0"
+                                          Stroke="{DynamicResource Theme.TextSecondaryBrush}"
                                           StrokeThickness="1.4"
                                           HorizontalAlignment="Left"
                                           Data="M 1,3 L 5.5,3 L 7,5 L 13.5,5 L 13.5,12.5 L 1,12.5 Z" />
                                     <TextBlock Grid.Column="1" Text="打开文件位置" FontSize="12.5" VerticalAlignment="Center" />
-                                    <TextBlock Grid.Column="2" Text="Ctrl+Enter" FontSize="11" Foreground="#7A808C" VerticalAlignment="Center" />
+                                    <TextBlock Grid.Column="2" Text="Ctrl+Enter" FontSize="11" Foreground="{DynamicResource Theme.TextDisabledBrush}" VerticalAlignment="Center" />
                                 </Grid>
                             </Button>
 
@@ -1393,12 +1393,12 @@
                                           Width="14"
                                           Height="14"
                                           Stretch="Uniform"
-                                          Stroke="#D6D9E0"
+                                          Stroke="{DynamicResource Theme.TextSecondaryBrush}"
                                           StrokeThickness="1.4"
                                           HorizontalAlignment="Left"
                                           Data="M 4.5,4.5 L 12.5,4.5 L 12.5,13.5 L 4.5,13.5 Z M 2,10.5 L 2,1.5 L 10,1.5" />
                                     <TextBlock x:Name="CopyPathActionLabel" Grid.Column="1" Text="复制路径" FontSize="12.5" VerticalAlignment="Center" />
-                                    <TextBlock Grid.Column="2" Text="Ctrl+Shift+C" FontSize="11" Foreground="#7A808C" VerticalAlignment="Center" />
+                                    <TextBlock Grid.Column="2" Text="Ctrl+Shift+C" FontSize="11" Foreground="{DynamicResource Theme.TextDisabledBrush}" VerticalAlignment="Center" />
                                 </Grid>
                             </Button>
                         </StackPanel>

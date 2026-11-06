@@ -101,6 +101,8 @@ public sealed class AppSettings
     public double ManualUiScale { get; set; } = 1.0;
     public double WindowOpacityPercent { get; set; } = 95.0;
     public bool EnablePopupAnimation { get; set; } = true;
+    public AppThemeMode ThemeMode { get; set; } = AppThemeMode.Dark;
+    public bool UseSystemAccentColor { get; set; }
 
     public double CachedStartMenuCardWidthDip { get; set; }
     public double CachedStartMenuCardHeightDip { get; set; }

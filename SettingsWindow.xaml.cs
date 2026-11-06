@@ -13,6 +13,7 @@ public partial class SettingsWindow : Window
     private readonly EverythingSearchService _everythingService;
     private readonly StartMenuBoundsService _boundsService;
     private readonly Action _onSettingsApplied;
+    private readonly AppThemeService _themeService;
     private bool _isLoading;
 
     public SettingsWindow(
@@ -28,7 +29,9 @@ public partial class SettingsWindow : Window
         _boundsService = boundsService;
         _onSettingsApplied = onSettingsApplied;
 
+        _themeService = AppThemeService.GetOrCreate(_settingsService);
         InitializeComponent();
+        _themeService.RegisterWindow(this);
         LoadFromSettings();
 
         switch (initialTabIndex)
@@ -110,6 +113,8 @@ public partial class SettingsWindow : Window
         SldWindowOpacity.Value = Math.Clamp(cur.WindowOpacityPercent, 75, 100);
         TxtWindowOpacityVal.Text = $"{(int)SldWindowOpacity.Value}%";
         ChkEnablePopupAnim.IsChecked = cur.EnablePopupAnimation;
+        CmbThemeMode.SelectedIndex = Enum.IsDefined(cur.ThemeMode) ? (int)cur.ThemeMode : (int)AppThemeMode.Dark;
+        ChkUseSystemAccentColor.IsChecked = cur.UseSystemAccentColor;
 
         ChkAutostart.IsChecked = _settingsService.IsAutostartEnabled();
         TxtInstanceName.Text = cur.EverythingInstanceName;
@@ -367,6 +372,7 @@ public partial class SettingsWindow : Window
     private void OnSaveAndApplyClick(object sender, RoutedEventArgs e)
     {
         var cur = _settingsService.Current;
+        ApplyThemeSelections();
 
         cur.FilterMode = (FilterConfigMode)Math.Clamp(CmbGlobalFilterMode.SelectedIndex, 0, 2);
         cur.UsePerCategoryFilterMode = ChkUsePerCategoryMode.IsChecked == true;
@@ -429,8 +435,15 @@ public partial class SettingsWindow : Window
             _everythingService.SetInstanceName(cur.EverythingInstanceName);
         _everythingService.RefreshEverythingExternalConfig();
 
+        _themeService.ApplyCurrentSettings();
         _onSettingsApplied();
         Close();
+    }
+
+    private void ApplyThemeSelections()
+    {
+        _settingsService.Current.ThemeMode = (AppThemeMode)Math.Clamp(CmbThemeMode.SelectedIndex, 0, 2);
+        _settingsService.Current.UseSystemAccentColor = ChkUseSystemAccentColor.IsChecked == true;
     }
 
     private void OnTitleBarMouseLeftButtonDown(object sender, MouseButtonEventArgs e)

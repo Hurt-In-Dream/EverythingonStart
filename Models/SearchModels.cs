@@ -83,6 +83,13 @@ public enum InitialSearchItemMode
     LastSelectedOnExit = 1
 }
 
+public enum AppThemeMode
+{
+    System = 0,
+    Light = 1,
+    Dark = 2
+}
+
 public sealed class SearchResultItem : INotifyPropertyChanged
 {
     private ImageSource? _smallIcon;

@@ -1,0 +1,221 @@
+using System.IO;
+using Expression = System.Linq.Expressions.Expression;
+using System.Reflection;
+using System.Runtime.InteropServices;
+using System.Text.Json;
+using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Interop;
+using System.Windows.Media;
+using System.Windows.Media.Imaging;
+using System.Windows.Threading;
+using EverythingonStart;
+using EverythingonStart.Services;
+
+internal static class Program
+{
+    private static int _checks, _failures;
+    private static Type _stateType = null!;
+    private static bool _systemLight;
+    private static Color _systemAccent = Color.FromRgb(184, 64, 80);
+    private static object ReadState() => Activator.CreateInstance(_stateType, _systemLight, _systemAccent)!;
+
+    [STAThread]
+    private static int Main(string[] args)
+    {
+        var app = new System.Windows.Application { ShutdownMode = ShutdownMode.OnExplicitShutdown };
+        var settings = new AppSettingsService();
+        typeof(AppSettingsService).GetProperty("Current")!.SetValue(settings, new AppSettings());
+        string configPath = Path.Combine(args[0], "isolated-settings.json");
+        typeof(AppSettingsService).GetField("_settingsFilePath", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(settings, configPath);
+        var assembly = typeof(AppSettingsService).Assembly;
+        var themeType = assembly.GetType("EverythingonStart.Services.AppThemeService");
+        if (themeType == null)
+        {
+            using var oldEverything = new EverythingSearchService(settings.Current.EverythingInstanceName, settings);
+            var oldWindows = MakeWindows(settings, oldEverything);
+            Console.WriteLine($"BASELINE: settings={((SolidColorBrush)((Border)oldWindows.Settings.Content).Background).Color}; search={((SolidColorBrush)MainCard(oldWindows.Main).Background).Color}; theme-controls=absent");
+            Check("theme-setting-persisted", typeof(AppSettings).GetProperty("ThemeMode") != null);
+            Check("system-accent-setting", typeof(AppSettings).GetProperty("UseSystemAccentColor") != null);
+            Check("settings-theme-selector", oldWindows.Settings.FindName("CmbThemeMode") != null);
+            Capture(oldWindows.Settings, Path.Combine(args[0], "baseline.png"));
+            oldWindows.Settings.Close(); oldWindows.Main.Close();
+            Console.WriteLine($"Summary: {_checks - _failures}/{_checks} passed");
+            app.Shutdown();
+            return 1;
+        }
+
+        _stateType = assembly.GetType("EverythingonStart.Services.SystemThemeState")!;
+        var funcType = typeof(Func<>).MakeGenericType(_stateType);
+        var reader = Expression.Lambda(funcType, Expression.Convert(Expression.Call(typeof(Program).GetMethod("ReadState", BindingFlags.Static | BindingFlags.NonPublic)!), _stateType)).Compile();
+        var service = Activator.CreateInstance(themeType, settings, reader, false)!;
+        var decode = themeType.GetMethod("DecodeAccentColor", BindingFlags.Static | BindingFlags.NonPublic)!;
+        Check("windows-accent-abgr-blue", (Color)decode.Invoke(null, [0xFFD77800u])! == Color.FromRgb(0, 120, 215));
+        Check("windows-accent-abgr-red", (Color)decode.Invoke(null, [0xFF5040B8u])! == Color.FromRgb(184, 64, 80));
+        void Apply() => themeType.GetMethod("ApplyCurrentSettings")!.Invoke(service, null);
+        Color Resource(string name) => ((SolidColorBrush)app.FindResource("Theme." + name + "Brush")).Color;
+        void SetMode(int value) => typeof(AppSettings).GetProperty("ThemeMode")!.SetValue(settings.Current, Enum.ToObject(typeof(AppSettings).GetProperty("ThemeMode")!.PropertyType, value));
+        void SetAccent(bool value) => typeof(AppSettings).GetProperty("UseSystemAccentColor")!.SetValue(settings.Current, value);
+        int Mode(object value) => Convert.ToInt32(typeof(AppSettings).GetProperty("ThemeMode")!.GetValue(value));
+
+        Check("backward-compatible-default", Mode(settings.Current) == 2 && !(bool)typeof(AppSettings).GetProperty("UseSystemAccentColor")!.GetValue(settings.Current)!);
+        var oldConfig = JsonSerializer.Deserialize<AppSettings>("{\"Version\":3}")!;
+        Check("old-json-keeps-dark-blue", Mode(oldConfig) == 2 && !(bool)typeof(AppSettings).GetProperty("UseSystemAccentColor")!.GetValue(oldConfig)!);
+        using var everything = new EverythingSearchService(settings.Current.EverythingInstanceName, settings);
+        var windows = MakeWindows(settings, everything);
+        var selector = (ComboBox)windows.Settings.FindName("CmbThemeMode");
+        var accentOption = (CheckBox)windows.Settings.FindName("ChkUseSystemAccentColor");
+        Check("three-selectable-modes", selector.Items.Count == 3 && selector.SelectedIndex == 2);
+        Check("accent-option-loaded", accentOption.IsChecked == false);
+        Check("dark-initial-main-and-settings", Resource("WindowBackground").R < 80 && ((SolidColorBrush)MainCard(windows.Main).Background).Color.R < 80);
+        Check("fixed-blue-default", Resource("Accent") == Color.FromRgb(88, 182, 234));
+        Capture(windows.Settings, Path.Combine(args[0], "dark.png"));
+
+        selector.SelectedIndex = 1;
+        accentOption.IsChecked = true;
+        Check("unsaved-selections-do-not-apply", Mode(settings.Current) == 2 && Resource("WindowBackground").R < 80
+            && !(bool)typeof(AppSettings).GetProperty("UseSystemAccentColor")!.GetValue(settings.Current)!);
+
+        selector.SelectedIndex = 0;
+        accentOption.IsChecked = true;
+        windows.Settings.GetType().GetMethod("ApplyThemeSelections", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(windows.Settings, null);
+        Check("ui-selections-map-to-config", Mode(settings.Current) == 0 && (bool)typeof(AppSettings).GetProperty("UseSystemAccentColor")!.GetValue(settings.Current)!);
+        _systemLight = true; Apply(); Pump();
+        Check("system-light-theme", Resource("WindowBackground").R > 220);
+        Check("system-accent-exact", Resource("Accent") == _systemAccent);
+        Check("existing-windows-update-live", ((SolidColorBrush)((Border)windows.Settings.Content).Background).Color.R > 220 && ((SolidColorBrush)MainCard(windows.Main).Background).Color.R > 220);
+        Check("light-text-readable", Resource("TextPrimary").R < 80);
+        Capture(windows.Settings, Path.Combine(args[0], "system-light.png"));
+        Capture(windows.Main, Path.Combine(args[0], "main-light.png"));
+
+        _systemLight = false;
+        var hook = themeType.GetMethod("HandleWindowMessage", BindingFlags.Instance | BindingFlags.NonPublic)!;
+        hook.Invoke(service, [IntPtr.Zero, 0x001A, IntPtr.Zero, IntPtr.Zero, false]);
+        Pump();
+        Check("system-notification-updates-theme", Resource("WindowBackground").R < 80);
+        _systemAccent = Color.FromRgb(83, 49, 160);
+        hook.Invoke(service, [IntPtr.Zero, 0x0320, IntPtr.Zero, IntPtr.Zero, false]);
+        Pump();
+        Check("accent-notification-updates-color", Resource("Accent") == _systemAccent);
+        Capture(windows.Settings, Path.Combine(args[0], "system-dark.png"));
+        var menuItem = new MenuItem { Header = "Theme menu test", IsCheckable = true, IsChecked = true, Style = (Style)app.FindResource(typeof(MenuItem)) };
+        menuItem.Measure(new Size(300, 40)); menuItem.Arrange(new Rect(0, 0, 300, 40)); menuItem.ApplyTemplate();
+        Check("menu-checkmark-theme", ((UIElement)menuItem.Template.FindName("MenuCheck", menuItem)).Visibility == Visibility.Visible
+            && ((SolidColorBrush)menuItem.Foreground).Color == Resource("TextPrimary"));
+        bool clicked = false; menuItem.Click += (_, _) => clicked = true;
+        menuItem.RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));
+        Check("menu-click-routing-preserved", clicked);
+
+        SetMode(1); _systemLight = false; Apply(); Pump();
+        Check("forced-light-ignores-system-dark", Resource("WindowBackground").R > 220);
+        SetMode(2); _systemLight = true; Apply(); Pump();
+        Check("forced-dark-ignores-system-light", Resource("WindowBackground").R < 80);
+        SetAccent(false); Apply();
+        _systemAccent = Colors.Yellow;
+        hook.Invoke(service, [IntPtr.Zero, 0x0320, IntPtr.Zero, IntPtr.Zero, false]); Pump();
+        Check("fixed-accent-ignores-system", Resource("Accent") == Color.FromRgb(88, 182, 234));
+
+        SetAccent(true);
+        foreach (int mode in new[] { 1, 2 })
+        {
+            SetMode(mode);
+            foreach (Color accent in new[] { Colors.Yellow, Colors.White, Colors.Black, Color.FromRgb(120, 60, 140) })
+            {
+                _systemAccent = accent; Apply();
+                Check($"accent-contrast-{mode}-{accent}", Contrast(Resource("AccentText"), Resource("Card")) >= 4.5
+                    && Contrast(Resource("AccentForeground"), Resource("Accent")) >= 4.5);
+            }
+        }
+        settings.Current.WindowOpacityPercent = 80;
+        Apply(); Pump();
+        Check("opacity-survives-theme-change", ((SolidColorBrush)MainCard(windows.Main).Background).Color.A == 204);
+        SetMode(0); SetAccent(true); settings.Save();
+        string saved = File.ReadAllText(configPath);
+        var loaded = JsonSerializer.Deserialize<AppSettings>(saved)!;
+        Check("settings-roundtrip", Mode(loaded) == 0 && (bool)typeof(AppSettings).GetProperty("UseSystemAccentColor")!.GetValue(loaded)!);
+        SetMode(2); SetAccent(false); settings.Load();
+        Check("settings-reload", Mode(settings.Current) == 0 && (bool)typeof(AppSettings).GetProperty("UseSystemAccentColor")!.GetValue(settings.Current)!);
+
+        // Restore a readable system-light/red preview without modifying the user's Windows settings.
+        _systemLight = true; _systemAccent = Color.FromRgb(184, 64, 80); Apply(); Pump();
+        windows.Settings.Close(); windows.Main.Close();
+        ((IDisposable)service).Dispose();
+        Check("theme-service-disposes", !app.Resources.Contains("AppThemeService"));
+        // Exercise real HWND registration/notification delivery on our own invisible window.
+        var observing = Activator.CreateInstance(themeType, settings, reader, true)!;
+        var notificationWindow = new Window
+        {
+            WindowStyle = WindowStyle.None, ShowActivated = false, ShowInTaskbar = false,
+            Left = -10000, Top = -10000, Width = 32, Height = 32, Content = new Border()
+        };
+        ((Border)notificationWindow.Content).SetResourceReference(Border.BackgroundProperty, "Theme.WindowBackgroundBrush");
+        themeType.GetMethod("RegisterWindow")!.Invoke(observing, [notificationWindow]);
+        notificationWindow.Show(); Pump();
+        _systemLight = false;
+        // WM_SETTINGCHANGE has pointer parameters and cannot be sent with PostMessage (1159).
+        bool delivered = SendMessageTimeoutW(new WindowInteropHelper(notificationWindow).Handle, 0x001A,
+            IntPtr.Zero, IntPtr.Zero, 2, 1000, out _) != IntPtr.Zero;
+        int nativeError = Marshal.GetLastWin32Error();
+        Pump();
+        var registrations = (System.Collections.IDictionary)themeType.GetField("_windows", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(observing)!;
+        Console.WriteLine($"Native observer: delivered={delivered}, error={nativeError}, sourceAttached={registrations[notificationWindow] != null}, mode={Mode(settings.Current)}, background={((SolidColorBrush)((Border)notificationWindow.Content).Background).Color}");
+        Check("real-window-notification-registration", delivered && ((SolidColorBrush)((Border)notificationWindow.Content).Background).Color.R < 80);
+        notificationWindow.Close();
+        ((IDisposable)observing).Dispose();
+        Check("observer-window-cleanup", !app.Resources.Contains("AppThemeService"));
+        Console.WriteLine($"Summary: {_checks - _failures}/{_checks} passed");
+        app.Shutdown();
+        return _failures == 0 ? 0 : 1;
+    }
+
+    private static (MainWindow Main, SettingsWindow Settings) MakeWindows(AppSettingsService settings, EverythingSearchService everything)
+    {
+        var bounds = new StartMenuBoundsService(settings);
+        var main = new MainWindow(settings, everything, new StartMenuIndexService(), new WebSuggestionService(settings), new IconCacheService(), new ActionExecutorService(everything, settings), bounds)
+        { ShowActivated = false, Left = -10000, Top = -10000 };
+        main.Show();
+        var window = new SettingsWindow(settings, everything, bounds, () => { }, initialTabIndex: 3)
+        { WindowStartupLocation = WindowStartupLocation.Manual, ShowActivated = false, ShowInTaskbar = false, Left = -10000, Top = -10000 };
+        window.Show(); Pump();
+        return (main, window);
+    }
+
+    private static Border MainCard(MainWindow window) => (Border)window.FindName("RootCardBorder");
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    private static extern IntPtr SendMessageTimeoutW(IntPtr hwnd, uint message, IntPtr wParam, IntPtr lParam,
+        uint flags, uint timeout, out UIntPtr result);
+
+    private static double Contrast(Color a, Color b)
+    {
+        double L(Color c)
+        {
+            double C(byte v) { double s = v / 255.0; return s <= 0.04045 ? s / 12.92 : Math.Pow((s + 0.055) / 1.055, 2.4); }
+            return 0.2126 * C(c.R) + 0.7152 * C(c.G) + 0.0722 * C(c.B);
+        }
+        double first = L(a), second = L(b);
+        return (Math.Max(first, second) + 0.05) / (Math.Min(first, second) + 0.05);
+    }
+
+    private static void Check(string name, bool pass)
+    {
+        _checks++; if (!pass) _failures++;
+        Console.WriteLine($"{(pass ? "PASS" : "FAIL")} {name}");
+    }
+    private static void Pump()
+    {
+        var frame = new DispatcherFrame();
+        System.Windows.Application.Current.Dispatcher.BeginInvoke(DispatcherPriority.ApplicationIdle, new Action(() => frame.Continue = false));
+        Dispatcher.PushFrame(frame);
+        foreach (Window window in System.Windows.Application.Current.Windows) window.UpdateLayout();
+    }
+    private static void Capture(Window window, string path)
+    {
+        window.UpdateLayout();
+        var bitmap = new RenderTargetBitmap((int)Math.Ceiling(window.ActualWidth), (int)Math.Ceiling(window.ActualHeight), 96, 96, PixelFormats.Pbgra32);
+        bitmap.Render(window);
+        var encoder = new PngBitmapEncoder(); encoder.Frames.Add(BitmapFrame.Create(bitmap));
+        using var file = File.Create(path); encoder.Save(file);
+        Console.WriteLine("Screenshot: " + path);
+    }
+}

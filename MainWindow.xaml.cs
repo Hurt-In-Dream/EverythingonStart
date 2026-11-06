@@ -24,6 +24,7 @@ public partial class MainWindow : Window
     private const long WS_EX_APPWINDOW = 0x00040000L;
     private const uint SWP_NOSIZE = 0x0001;
     private const uint SWP_NOMOVE = 0x0002;
+    private const uint SWP_NOZORDER = 0x0004;
     private const uint SWP_NOACTIVATE = 0x0010;
     private const uint SWP_SHOWWINDOW = 0x0040;
     private const uint SWP_ASYNCWINDOWPOS = 0x4000;
@@ -50,7 +51,7 @@ public partial class MainWindow : Window
     private WinKeyHookService? _winKeyHookService;
     private IntPtr _cachedTaskbarHwnd;
     private bool _noTaskbarStyleApplied;
-    private byte _lastAppliedOpacityAlpha;
+    private readonly AppThemeService _themeService;
     private bool _isShowingDefaultLanding;
     private long _searchVersion;
     private int _taskbarKeepTopTicksRemaining;
@@ -87,7 +88,11 @@ public partial class MainWindow : Window
         _actionExecutor = actionExecutor;
         _boundsService = boundsService;
 
+        _themeService = AppThemeService.GetOrCreate(_settingsService);
         InitializeComponent();
+        _themeService.RegisterWindow(this);
+        _themeService.ThemeChanged += OnAppThemeChanged;
+        Closed += (_, _) => _themeService.ThemeChanged -= OnAppThemeChanged;
         ResultsListBox.ItemsSource = _entries;
 
         _inputHandoverFocusTimer = new DispatcherTimer(DispatcherPriority.Input)
@@ -197,17 +202,17 @@ public partial class MainWindow : Window
 
     public void ApplyVisualSettings()
     {
-        double opacityPct = Math.Clamp(_settingsService.Current.WindowOpacityPercent, 75.0, 100.0);
-        byte alpha = (byte)Math.Round((opacityPct / 100.0) * 255.0);
-        if (alpha == _lastAppliedOpacityAlpha)
-            return;
+        _themeService.ApplyCurrentSettings();
+    }
 
-        _lastAppliedOpacityAlpha = alpha;
-        var brush = new System.Windows.Media.SolidColorBrush(
-            System.Windows.Media.Color.FromArgb(alpha, 0x1F, 0x20, 0x23)
-        );
-        brush.Freeze();
-        RootCardBorder.Background = brush;
+    private void OnAppThemeChanged(object? sender, EventArgs e)
+    {
+        _iconCacheService.RefreshThemeIcons();
+        foreach (var entry in _entries)
+        {
+            if (entry.Item is { } item && (item.IsWeb || item.IsSetting))
+                _iconCacheService.PopulateIconsAsync(item);
+        }
     }
 
     public void PreWarm()
@@ -422,7 +427,8 @@ public partial class MainWindow : Window
             {
                 _taskbarList?.MarkFullscreenWindow(fsHwnd, true);
                 uint targetThreadId = GetWindowThreadProcessId(fsHwnd, out _);
-                uint flags = SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE
+                // 收起面板时保留用户切换后的层级，不能把后台全屏窗口抬到新前台窗口之上。
+                uint flags = SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_NOZORDER
                              | (targetThreadId != currentThreadId ? SWP_ASYNCWINDOWPOS : 0);
                 SetWindowPos(fsHwnd, IntPtr.Zero, 0, 0, 0, 0, flags);
             }
@@ -548,18 +554,8 @@ public partial class MainWindow : Window
                 0,
                 SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | asyncFlag
             );
-            if (taskbarHwnd != IntPtr.Zero)
-            {
-                SetWindowPos(
-                    hwnd,
-                    taskbarHwnd,
-                    0,
-                    0,
-                    0,
-                    0,
-                    SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | asyncFlag
-                );
-            }
+            // HWND_NOTOPMOST 已将全屏窗口放到置顶窗口之下。
+            // 再插到置顶任务栏之后会重新赋予 WS_EX_TOPMOST，导致 Alt+Tab 选中的普通窗口被遮挡。
         }
     }
 
@@ -1696,14 +1692,15 @@ public partial class MainWindow : Window
 
     private static System.Windows.Shapes.Path CreateMingCuteSettingsMenuIcon()
     {
-        return new System.Windows.Shapes.Path
+        var icon = new System.Windows.Shapes.Path
         {
             Width = 14,
             Height = 14,
             Stretch = System.Windows.Media.Stretch.Uniform,
-            Fill = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(0x58, 0xB6, 0xEA)),
             Data = System.Windows.Media.Geometry.Parse(IconCacheService.MingCuteSettings4LinePathData)
         };
+        icon.SetResourceReference(System.Windows.Shapes.Shape.FillProperty, ThemeResourceKeys.AccentTextBrush);
+        return icon;
     }
 
     private void OnSettingsWindowButtonClick(object sender, RoutedEventArgs e)
