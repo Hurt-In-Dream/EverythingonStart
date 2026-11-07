@@ -249,10 +249,10 @@ public sealed class WinKeyHookService : IDisposable
 
         if (_startMenuSessionArmed)
         {
-            if ((nowTick - _lastSingleWinReleaseTick) is >= 0 and <= 850)
-                return true;
-
-            _startMenuSessionArmed = false;
+            // Win 键释放只用于安排尺寸探测，不能证明开始菜单已打开。
+            // 前台不是已确认的开始菜单宿主时，必须放行输入，不能合成 Esc。
+            if ((nowTick - _lastSingleWinReleaseTick) is < 0 or > 850)
+                _startMenuSessionArmed = false;
         }
 
         if (fg != IntPtr.Zero)

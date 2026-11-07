@@ -8,6 +8,7 @@ public static class TestNative
     public static IntPtr Foreground = new(1);
     public static bool ControlDown;
     public static bool TextFocus;
+    public static readonly List<(byte Key, uint Flags)> SyntheticKeys = new();
 }
 
 internal static class Program
@@ -17,6 +18,52 @@ internal static class Program
 
     private static int Main()
     {
+        // A Win tap is not proof that the native Start menu actually opened.
+        // These tests keep the foreground on an ordinary/game window throughout.
+        foreach (int delay in new[] { 0, 100, 400, 850, 900 })
+        {
+            using var s = new Scenario();
+            s.Send(0x5B);
+            s.Send(0x5B, up: true);
+            s.Key('A', delay: delay);
+            Check($"no-start-menu-after-win-{delay}ms", s, "", "a", "",
+                !s.Pending && TestNative.SyntheticKeys.Count == 0 && s.LastKeyUpResult == new IntPtr(-99));
+        }
+        using (var s = new Scenario())
+        {
+            s.Key('A');
+            Check("ordinary-input-without-win", s, "", "a", "",
+                !s.Pending && TestNative.SyntheticKeys.Count == 0);
+        }
+        using (var s = new Scenario())
+        {
+            s.Send(0x5B);
+            s.Send(0x5B, up: true);
+            TestNative.Foreground = IntPtr.Zero;
+            s.Key('A', delay: 100);
+            Check("unknown-foreground-after-win", s, "", "a", "",
+                !s.Pending && TestNative.SyntheticKeys.Count == 0);
+        }
+        using (var s = new Scenario())
+        {
+            s.Send(0x5B);
+            s.Send(0x5B, up: true);
+            TestNative.Foreground = new(99);
+            s.Key('A', delay: 100);
+            Check("different-app-after-win", s, "", "a", "",
+                !s.Pending && TestNative.SyntheticKeys.Count == 0);
+        }
+        using (var s = new Scenario())
+        {
+            s.Send(0x5B);
+            s.Send(0x5B, up: true);
+            // An ordinary keystroke before the menu opens must pass through.
+            s.Key('A', delay: 100);
+            TestNative.Foreground = new(2);
+            s.Key('B', delay: 100);
+            Check("confirmed-start-menu-after-passthrough", s, "b", "a", "",
+                s.Pending && TestNative.SyntheticKeys.SequenceEqual(new[] { ((byte)0x1B, 0u), ((byte)0x1B, 2u) }));
+        }
         using (var s = new Scenario())
         {
             s.Begin();
@@ -166,6 +213,7 @@ internal static class Program
         public string Search = "";
         public string Other = "";
         public string Unfocused = "";
+        public IntPtr LastKeyUpResult;
         public WinKeyHookService Hook => _hook;
         public bool Pending => (bool?)typeof(WinKeyHookService).GetProperty("IsInputHandoverPending")?.GetValue(_hook)
             ?? TestNative.Now < (long)typeof(WinKeyHookService).GetField("_handoverWindowUntilTick", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(_hook)!;
@@ -176,6 +224,7 @@ internal static class Program
             TestNative.Foreground = new(1);
             TestNative.ControlDown = false;
             TestNative.TextFocus = false;
+            TestNative.SyntheticKeys.Clear();
             _hook = new WinKeyHookService(new AppSettingsService(), new StartMenuBoundsService());
             _hook.SetMainWindowHandle(new(3));
             _hook.StartMenuTypingIntercepted += text => Search += text;
@@ -198,7 +247,7 @@ internal static class Program
         {
             TestNative.Now += delay;
             IntPtr result = Send(key, injected: injected);
-            if (release) Send(key, up: true, injected: injected);
+            if (release) LastKeyUpResult = Send(key, up: true, injected: injected);
             if (result == new IntPtr(1)) return;
             string text = char.ToLowerInvariant(key).ToString();
             if (TestNative.Foreground == new IntPtr(3))

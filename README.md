@@ -6,12 +6,12 @@
 
 ## 下载与快速开始
 
-从 [v1.4.1 Release](https://github.com/Hurt-In-Dream/EverythingonStart/releases/tag/v1.4.1) 选择 Windows x64 版本：
+从 [v1.4.2 Release](https://github.com/Hurt-In-Dream/EverythingonStart/releases/tag/v1.4.2) 选择 Windows x64 版本：
 
 | 版本 | 下载 | 使用方式 |
 | --- | --- | --- |
-| 安装版 | [Setup-x64.exe](https://github.com/Hurt-In-Dream/EverythingonStart/releases/download/v1.4.1/EverythingonStart-v1.4.1-Setup-x64.exe) | 按用户安装，无需管理员权限，默认安装到 `%LOCALAPPDATA%\Programs\EverythingonStart` |
-| 绿色单文件版 | [Portable-x64.exe](https://github.com/Hurt-In-Dream/EverythingonStart/releases/download/v1.4.1/EverythingonStart-v1.4.1-Portable-x64.exe) | 下载一个 EXE 即可运行，无需旁置 DLL 或安装 .NET |
+| 安装版 | [Setup-x64.exe](https://github.com/Hurt-In-Dream/EverythingonStart/releases/download/v1.4.2/EverythingonStart-v1.4.2-Setup-x64.exe) | 按用户安装，无需管理员权限，默认安装到 `%LOCALAPPDATA%\Programs\EverythingonStart` |
+| 绿色单文件版 | [Portable-x64.exe](https://github.com/Hurt-In-Dream/EverythingonStart/releases/download/v1.4.2/EverythingonStart-v1.4.2-Portable-x64.exe) | 下载一个 EXE 即可运行，无需旁置 DLL 或安装 .NET |
 
 单文件版内置 .NET 与 Everything SDK，首次运行会将原生运行库解压到 .NET 的用户临时缓存；设置仍保存在用户目录，不是零磁盘写入模式。
 推荐 Windows 11 x64。文件检索需要安装并在后台运行 [Everything](https://www.voidtools.com/downloads/)。
@@ -19,6 +19,12 @@
 
 更新前请先从托盘退出旧实例，再安装或运行新版。设置保存在 `%LOCALAPPDATA%\EverythingonStart\settings.json`，卸载保留设置；安装器不自动更改开机启动项。
 发行包尚未进行代码签名；可使用同一 Release 的 `SHA256SUMS.txt` 校验下载文件。
+
+### v1.4.2 输入干扰修复
+
+- 默认打字接管模式不再仅凭单按 Win 后的 850ms 宽限期截获输入；只有确认前台是原生开始菜单宿主后，才启动输入接管和关闭开始菜单。
+- 开始菜单未打开、前台仍是游戏/普通应用或无法确定前台窗口时，放行输入，不因此合成 Esc；保留正常开始菜单接管、连续输入缓冲和 Win 组合键行为。
+- 本次修复不等于通过腾讯 ACE 兼容性认证，也未确认解决三角洲行动启动失败。遇到游戏安全组件报错，请先从托盘完全退出本程序，再从官方启动器排查；切换现有两个触发模式不会卸载全局键盘钩子。
 
 ---
 

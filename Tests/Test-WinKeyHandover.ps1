@@ -43,7 +43,7 @@ $replacements = @{
     'private static extern IntPtr GetForegroundWindow();' = 'private static IntPtr GetForegroundWindow() => TestNative.Foreground;'
     'private static extern short GetAsyncKeyState(int vKey);' = 'private static short GetAsyncKeyState(int vKey) => TestNative.ControlDown && vKey == 0x11 ? unchecked((short)0x8000) : (short)0;'
     'private static extern IntPtr CallNextHookEx(IntPtr hhk, int nCode, IntPtr wParam, IntPtr lParam);' = 'private static IntPtr CallNextHookEx(IntPtr hhk, int nCode, IntPtr wParam, IntPtr lParam) => new(-99);'
-    'private static extern void keybd_event(byte bVk, byte bScan, uint dwFlags, UIntPtr dwExtraInfo);' = 'private static void keybd_event(byte bVk, byte bScan, uint dwFlags, UIntPtr dwExtraInfo) { }'
+    'private static extern void keybd_event(byte bVk, byte bScan, uint dwFlags, UIntPtr dwExtraInfo);' = 'private static void keybd_event(byte bVk, byte bScan, uint dwFlags, UIntPtr dwExtraInfo) { TestNative.SyntheticKeys.Add((bVk, dwFlags)); }'
     'private static extern bool AllowSetForegroundWindow(int dwProcessId);' = 'private static bool AllowSetForegroundWindow(int dwProcessId) => true;'
 }
 foreach ($signature in $replacements.Keys) {
