@@ -259,16 +259,10 @@ public sealed class StartMenuIndexService
 
     private static int ComputeMatchScore(IndexedEntry entry, string queryLower)
     {
-        var titleLower = entry.Title.ToLowerInvariant();
-        if (titleLower == queryLower)
-            return 100;
-        if (titleLower.StartsWith(queryLower, StringComparison.Ordinal))
-            return 85;
-        if (titleLower.Contains(queryLower, StringComparison.Ordinal))
-            return 70;
-        if (entry.SearchKeywords.Contains(queryLower, StringComparison.Ordinal))
-            return 50;
-        return 0;
+        int titleScore = PinyinSearchService.GetMatchScore(entry.Title, queryLower);
+        int keywordScore = PinyinSearchService.GetMatchScore(entry.SearchKeywords, queryLower);
+        // Direct title matches remain first; romanized aliases are below literal keyword matches.
+        return Math.Max(titleScore, keywordScore >= 70 ? 50 : keywordScore > 0 ? 35 : 0);
     }
 
     private static SearchResultItem ToResultItem(IndexedEntry e) =>

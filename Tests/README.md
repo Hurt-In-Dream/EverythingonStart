@@ -1,5 +1,17 @@
 # Win 键输入交接回归测试
 
+## 拼音与首字母搜索回归测试
+
+```powershell
+dotnet build EverythingonStart.csproj -c Release -p:Platform=x64
+pwsh -NoProfile -File .\Tests\Test-PinyinSearch.ps1 -AppAssemblyDirectory .\bin\x64\Release\net10.0-windows
+```
+
+使用确定性的内置应用/设置及文件名样本验证全拼、前缀、首字母、多音字、简繁体、`v`、混合名称、排序优先级、查询长度上限及 Everything 高级语法/搜索标志保留。
+默认不读取用户快捷方式或查询用户文件。可附加 `-LiveSmokeTest`，使用当前连接的 Everything 引擎检索「微信」，验证全拼/首字母匹配与文件夹筛选；只输出计数，不输出用户路径。
+
+## Win 键输入交接
+
 ```powershell
 pwsh -NoProfile -File .\Tests\Test-WinKeyHandover.ps1
 ```

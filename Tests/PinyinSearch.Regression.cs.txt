@@ -1,0 +1,116 @@
+using System.Collections;
+using System.Reflection;
+using System.Runtime.CompilerServices;
+using System.Text.RegularExpressions;
+using EverythingonStart.Models;
+using EverythingonStart.Services;
+
+internal static class Program
+{
+    private static int _checks, _failed;
+    private const BindingFlags Private = BindingFlags.Instance | BindingFlags.NonPublic;
+    private static int Main(string[] args)
+    {
+        var menu = new StartMenuIndexService();
+        // Index only deterministic built-in apps; do not read user shortcuts.
+        var entries = typeof(StartMenuIndexService).GetField("_appEntries", Private)!.GetValue(menu)!;
+        typeof(StartMenuIndexService).GetMethod("AddSystemQuickApps", BindingFlags.Static | BindingFlags.NonPublic)!
+            .Invoke(null, [entries, new HashSet<string>(StringComparer.OrdinalIgnoreCase)]);
+        typeof(StartMenuIndexService).GetField("_isIndexed", Private)!.SetValue(menu, true);
+        foreach (var q in new[] { "计算器", "calc", "jisuanqi", "JSQ", "jishiben", "jsb" })
+        {
+            var result = menu.QueryApps(q, 10);
+            Console.WriteLine($"APPS {q}: {string.Join(",", result.Select(x => x.Title))}");
+            Check($"app-{q}", result.Any(x => x.Title == (q is "jishiben" or "jsb" ? "记事本" : "计算器")));
+        }
+        foreach (var q in new[] { "任务栏", "renwulan", "rwl", "fenbianlv", "fbl" })
+        {
+            var result = menu.QuerySettings(q, 40);
+            Console.WriteLine($"SETTINGS {q}: {string.Join(",", result.Select(x => x.Title))}");
+            Check($"setting-{q}", result.Any(x => x.Title == (q is "fenbianlv" or "fbl" ? "显示设置" : "任务栏设置")));
+        }
+        var type = typeof(StartMenuIndexService).Assembly.GetType("EverythingonStart.Services.PinyinSearchService");
+        if (type == null)
+        {
+            Console.WriteLine("PINYIN_SERVICE: absent");
+            Console.WriteLine($"Summary: {_checks - _failed}/{_checks} passed");
+            return 1;
+        }
+        int Score(string title, string q) => (int)type.GetMethod("GetMatchScore")!.Invoke(null, [title, q])!;
+        string? Pattern(string q) => (string?)type.GetMethod("BuildRegexPattern")!.Invoke(null, [q]);
+        foreach (var pair in new[] {
+            ("微信", "weixin"), ("微信", "wx"), ("微信", "WEIX"), ("重庆银行", "chongqingyinhang"),
+            ("重庆银行", "zqyh"), ("音乐", "yinyue"), ("绿茶", "lvcha"), ("女儿", "nver"),
+            ("年度报告2026.pdf", "niandubaogao2026.pdf"), ("年度报告2026.pdf", "ndbg2026.pdf"),
+            ("项目文档", "xiangmuwendang"), ("项目文档", "xmwd"), ("项目文档", "wend"),
+            ("项目文档", "xm wd"), ("项目文档", "项目wd"), ("资料备份", "beifen"),
+            ("計算器", "jisuanqi"), ("微信PC", "wxpc") })
+        {
+            Check($"local-{pair.Item1}-{pair.Item2}", Score(pair.Item1, pair.Item2) > 0);
+            string? pattern = Pattern(pair.Item2);
+            bool matches = pattern != null && Regex.IsMatch(pair.Item1, pattern, RegexOptions.IgnoreCase, TimeSpan.FromSeconds(2));
+            Check($"regex-{pair.Item1}-{pair.Item2}", matches);
+        }
+        Check("local-no-false-positive", Score("计算器", "wx") == 0);
+        Check("literal-priority", Score("weixin", "weixin") > Score("微信", "weixin"));
+        Check("full-pinyin-priority", Score("微信", "weixin") > Score("微信", "wx"));
+        Check("empty-query", Score("微信", " ") == 0 && Pattern(" ") == null);
+        Check("bounded-long-query", Pattern(new string('a', 200)) == null);
+        Check("bounded-pattern-never-empty-match", Pattern(new string('a', 48)) is not { } bounded ||
+            !Regex.IsMatch("微信", bounded, RegexOptions.IgnoreCase, TimeSpan.FromSeconds(2)));
+        foreach (string q in new[] { "ext:pdf wx", "regex:foo.*", "C:\\Docs\\wx", "*.pdf", "\"wx\"", "wx|jsq", "!wx", "<wx jsq>" })
+            Check($"advanced-query-unchanged-{q}", Pattern(q) == null);
+        var settings = (AppSettingsService)RuntimeHelpers.GetUninitializedObject(typeof(AppSettingsService));
+        typeof(AppSettingsService).GetProperty("Current")!.SetValue(settings, new AppSettings());
+        var everything = (EverythingSearchService)RuntimeHelpers.GetUninitializedObject(typeof(EverythingSearchService));
+        typeof(EverythingSearchService).GetField("_settingsService", Private)!.SetValue(everything, settings);
+        string query = everything.BuildCategoryQuery("wx", SearchCategory.Folders);
+        Check("category-filter-outside-or", query.StartsWith("folder: <wx|regex:\"", StringComparison.Ordinal));
+        foreach (string q in new[] { "ext:pdf wx", "*.pdf", "\"wx\"", "C:\\Docs\\wx" })
+            Check($"native-syntax-{q}", everything.BuildCategoryQuery(q, SearchCategory.All) == q);
+        settings.Current.EnableRegex = true;
+        Check("explicit-regex-not-expanded", everything.BuildCategoryQuery("wx", SearchCategory.All) == "wx");
+        settings.Current.EnableRegex = false; settings.Current.MatchCase = true;
+        Check("match-case-not-expanded", everything.BuildCategoryQuery("WX", SearchCategory.All) == "WX");
+        settings.Current.MatchCase = false; settings.Current.MatchWholeWord = true;
+        Check("whole-word-not-expanded", everything.BuildCategoryQuery("wx", SearchCategory.All) == "wx");
+        settings.Current.MatchWholeWord = false;
+        settings.Current.FollowEverythingSearchFlags = true;
+        typeof(EverythingSearchService).GetField("_everythingIniMatchRegex", Private)!.SetValue(everything, true);
+        Check("follow-native-regex-not-expanded", everything.BuildCategoryQuery("wx", SearchCategory.All) == "wx");
+        settings.Current.FollowEverythingSearchFlags = false;
+        foreach (string q in new[] { "wx", "jisuanqi", "xmwd" })
+        {
+            var pattern = Pattern(q)!;
+            Console.WriteLine($"REGEX {q}: length={pattern.Length}");
+            Check($"regex-size-{q}", pattern.Length <= 24000);
+        }
+        if (args.Contains("--live-smoke"))
+        {
+            using var live = new EverythingSearchService(settingsService: settings);
+            Check("live-everything-connected", live.IsConnected);
+            void LiveQueries(string engine)
+            {
+                // Initials can match thousands of unrelated names; don't confuse a viewport limit with no match.
+                var timer = System.Diagnostics.Stopwatch.StartNew();
+                var chinese = live.Query("微信", SearchCategory.All, 5000);
+                var pinyin = live.Query("weixin", SearchCategory.All, 5000);
+                var initials = live.Query("wx", SearchCategory.All, 5000);
+                var folders = live.Query("wx", SearchCategory.Folders, 5000);
+                Console.WriteLine($"LIVE {engine}: chinese={chinese.TotalCount}; pinyin={pinyin.TotalCount}; initials={initials.TotalCount}; elapsed-ms={timer.ElapsedMilliseconds}");
+                Check($"live-{engine}-has-chinese-fixture", chinese.TotalCount > 0);
+                Check($"live-{engine}-pinyin-finds-chinese", pinyin.Items.Any(x => x.Title.Contains("微信")));
+                Check($"live-{engine}-initials-find-chinese", initials.Items.Any(x => x.Title.Contains("微信")));
+                Check($"live-{engine}-folder-filter", folders.TotalCount > 0 && folders.Items.All(x => x.IsFolder));
+            }
+            LiveQueries("selected-sdk");
+        }
+        Console.WriteLine($"Summary: {_checks - _failed}/{_checks} passed");
+        return _failed == 0 ? 0 : 1;
+    }
+    private static void Check(string name, bool pass)
+    {
+        _checks++; if (!pass) _failed++;
+        Console.WriteLine($"{(pass ? "PASS" : "FAIL")} {name}");
+    }
+}

@@ -494,6 +494,10 @@ public sealed class EverythingSearchService : IDisposable
 
     public string BuildCategoryQuery(string searchText, SearchCategory category)
     {
+        var (matchCase, matchWholeWord, _, enableRegex) = GetEffectiveMatchFlags();
+        // Explicit case/word/regex rules must retain their original native semantics.
+        if (!matchCase && !matchWholeWord && !enableRegex)
+            searchText = PinyinSearchService.ExpandEverythingQuery(searchText);
         var prefix = GetCategoryFilterPreview(category);
         var extraPrefix = GetExtraFilterPrefix();
 

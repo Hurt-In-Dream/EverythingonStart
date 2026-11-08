@@ -11,7 +11,7 @@
     <PlatformTarget>x64</PlatformTarget>
     <AssemblyName>EverythingonStart</AssemblyName>
     <RootNamespace>EverythingonStart</RootNamespace>
-    <Version>1.4.2</Version>
+    <Version>1.5.0</Version>
     <ApplicationIcon>Assets\AppIcon.ico</ApplicationIcon>
     <RestoreAdditionalProjectSources>https://api.nuget.org/v3/index.json</RestoreAdditionalProjectSources>
     <Description>Windows 11 开始菜单搜索极速复刻启动器，直连 Everything 实时索引并支持自适应缩放、自定义筛选器与双模式 Win 键触发。</Description>
@@ -28,6 +28,7 @@
   <ItemGroup>
     <Resource Include="Assets\AppIcon.png" />
     <Resource Include="Assets\AppIcon.ico" />
+    <EmbeddedResource Include="Assets\Pinyin\pinyin.txt" LogicalName="EverythingonStart.Pinyin.txt" />
     <EmbeddedResource Include="LICENSE" LogicalName="EverythingonStart.Licenses.GPL-3.0.txt" />
     <EmbeddedResource Include="THIRD-PARTY-NOTICES.md" LogicalName="EverythingonStart.Licenses.ThirdParty.md" />
     <EmbeddedResource Include="licenses\*.txt" LogicalName="EverythingonStart.Licenses.%(Filename)%(Extension)" />

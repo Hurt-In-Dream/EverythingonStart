@@ -39,6 +39,19 @@ MIT license; authors and project: Simon Mourier, contributors and ZZZ Projects.
 - License: `licenses/HtmlAgilityPack-LICENSE.txt`.
 - No page scripts, embedded browsers, cookies or automatic result-site requests are executed by this parser.
 
+## pinyin-data
+
+The offline character/pronunciation dictionary in `Assets/Pinyin/pinyin.txt` is from
+mozillazg/pinyin-data 0.16.0, commit `fe29ad32bdf352b31a02b9936e537f575432e9a6`.
+Copyright (c) 2016 mozillazg. MIT license.
+
+- Source: https://github.com/mozillazg/pinyin-data
+- Dictionary SHA-256: `2342a6f98c85dbc3c8d26aef31744876a36326c6466e51e9a0f16898c36c2011`.
+- License: `licenses/PinyinData-LICENSE.txt`.
+- The original dictionary is embedded unchanged. The matcher uses BMP CJK characters,
+  retains alternative pronunciations, removes tone marks, and accepts `v` for `ü`.
+- No dictionary download or file-index upload occurs at runtime.
+
 ## .NET
 
 The self-contained Windows x64 release includes unmodified Microsoft .NET runtime,

@@ -6,12 +6,12 @@
 
 ## 下载与快速开始
 
-从 [v1.4.2 Release](https://github.com/Hurt-In-Dream/EverythingonStart/releases/tag/v1.4.2) 选择 Windows x64 版本：
+从 [v1.5.0 Release](https://github.com/Hurt-In-Dream/EverythingonStart/releases/tag/v1.5.0) 选择 Windows x64 版本：
 
 | 版本 | 下载 | 使用方式 |
 | --- | --- | --- |
-| 安装版 | [Setup-x64.exe](https://github.com/Hurt-In-Dream/EverythingonStart/releases/download/v1.4.2/EverythingonStart-v1.4.2-Setup-x64.exe) | 按用户安装，无需管理员权限，默认安装到 `%LOCALAPPDATA%\Programs\EverythingonStart` |
-| 绿色单文件版 | [Portable-x64.exe](https://github.com/Hurt-In-Dream/EverythingonStart/releases/download/v1.4.2/EverythingonStart-v1.4.2-Portable-x64.exe) | 下载一个 EXE 即可运行，无需旁置 DLL 或安装 .NET |
+| 安装版 | [Setup-x64.exe](https://github.com/Hurt-In-Dream/EverythingonStart/releases/download/v1.5.0/EverythingonStart-v1.5.0-Setup-x64.exe) | 按用户安装，无需管理员权限，默认安装到 `%LOCALAPPDATA%\Programs\EverythingonStart` |
+| 绿色单文件版 | [Portable-x64.exe](https://github.com/Hurt-In-Dream/EverythingonStart/releases/download/v1.5.0/EverythingonStart-v1.5.0-Portable-x64.exe) | 下载一个 EXE 即可运行，无需旁置 DLL 或安装 .NET |
 
 单文件版内置 .NET 与 Everything SDK，首次运行会将原生运行库解压到 .NET 的用户临时缓存；设置仍保存在用户目录，不是零磁盘写入模式。
 推荐 Windows 11 x64。文件检索需要安装并在后台运行 [Everything](https://www.voidtools.com/downloads/)。
@@ -20,7 +20,14 @@
 更新前请先从托盘退出旧实例，再安装或运行新版。设置保存在 `%LOCALAPPDATA%\EverythingonStart\settings.json`，卸载保留设置；安装器不自动更改开机启动项。
 发行包尚未进行代码签名；可使用同一 Release 的 `SHA256SUMS.txt` 校验下载文件。
 
-### v1.4.2 输入干扰修复
+### v1.5.0 拼音与首字母搜索
+
+- 应用、系统设置、本地文件与文件夹新增全拼、拼音前缀与首字母搜索，如 `jisuanqi` / `jsq`、`renwulan` / `rwl`、`xiangmuwendang` / `xmwd`。
+- 内置离线词典，支持常见多音字、简繁体、中文/数字混合名称与 `v` 代替 `ü`，无需 Everything 拼音插件。
+- 保留原文字匹配和 Everything 高级语法；明确大小写、全字及正则匹配规则时不自动展开文件拼音查询。
+- 包含 v1.4.2 的开始菜单输入干扰修复；更新前请从托盘退出旧实例。
+
+### v1.4.2 输入干扰修复（已包含）
 
 - 默认打字接管模式不再仅凭单按 Win 后的 850ms 宽限期截获输入；只有确认前台是原生开始菜单宿主后，才启动输入接管和关闭开始菜单。
 - 开始菜单未打开、前台仍是游戏/普通应用或无法确定前台窗口时，放行输入，不因此合成 Esc；保留正常开始菜单接管、连续输入缓冲和 Win 组合键行为。
@@ -63,6 +70,7 @@
 ### 4. 多数据源毫秒级聚合与流畅交互动画
 - **本地文件与文件夹**：通过 [`EverythingSearchService`](Services/EverythingSearchService.cs) 直连 Everything 实时索引，毫秒级返回最佳匹配、应用、文档、文件夹与照片结果。
 - **开始菜单应用与系统设置**：[`StartMenuIndexService`](Services/StartMenuIndexService.cs) 内存常驻索引系统与用户开始菜单快捷方式及 30+ 项常用 Windows 11 `ms-settings:` 系统设置（统一采用 `mingcute:settings-4-line` 矢量设置图标）。
+- **拼音与首字母搜索**：应用、系统设置、本地文件与文件夹支持全拼、拼音前缀及首字母，例如 `jisuanqi` / `jsq` → 计算器、`renwulan` / `rwl` → 任务栏设置、`xiangmuwendang` / `xmwd` → 项目文档。支持常见多音字、简繁体及中文/数字混合名称；`ü` 可输入 `v`。词典随程序内置，无需联网或 Everything 拼音插件。
 - **实时 Web 联网搜索建议**：[`WebSuggestionService`](Services/WebSuggestionService.cs) 异步获取搜索联想词，支持一键通过 Bing、Google、百度或 DuckDuckGo 在默认浏览器中打开搜索结果。
 - **Web 右栏网页预览**：选中 Web 搜索词或建议后，右侧展示搜索引擎返回的网站、可点击标题、URL、摘要及可用的站内链接。保留完整搜索页入口；不再把 Web 项显示成文件属性卡片。
 - **MingCute Web 图标**：搜索项、网站卡片及外部链接采用 MingCute 矢量图标，跟随主题强调色，文件与应用的原始图标不变。
@@ -124,6 +132,16 @@ flowchart LR
 ---
 
 ## 设置中心说明
+
+### 拼音搜索规则
+
+普通输入自动同时匹配原文字和拼音；应用与设置的原文字标题匹配优先于拼音匹配。
+文件检索将拼音转换为 Everything 原生正则字符集，分类、附加类型筛选与现有排序仍由 Everything 执行，不在每次输入时遍历或建立另一份全盘文件索引。
+
+- 推荐连续输入不带声调的全拼或首字母；空格分隔的词保持 AND 匹配。
+- 文件搜索中的引号、通配符、路径、`ext:` 等高级语法保持原样，不自动拼音展开。
+- 开启「区分大小写」「全字匹配」「正则表达式」（包括跟随 Everything 配置）时，文件搜索保留这些规则，不做拼音扩展。应用/设置仍使用自身匹配规则。
+- 文件查询自动展开限制为 48 个字符和 24,000 个正则/查询字符，歧义分词最多 32 条路径；过长或超限输入回退为原生文字查询。内置匹配覆盖 BMP 中日韩汉字，不承诺词义级多音字消歧或生僻扩展区汉字。
 
 ### 主题与系统配色
 
@@ -228,10 +246,10 @@ pwsh -NoProfile -File .\Scripts\Publish-Release.ps1 -InnoSetupCompiler 'C:\Progr
 .\bin\x64\Release\net10.0-windows\EverythingonStart.exe --self-test
 
 # 单文件包诊断：不启动托盘、全局热键、设置服务或单实例接管
-.\EverythingonStart-v1.4.1-Portable-x64.exe --package-self-test
+.\EverythingonStart-v1.5.0-Portable-x64.exe --package-self-test
 
 # 输出单文件内嵌许可证
-.\EverythingonStart-v1.4.1-Portable-x64.exe --licenses
+.\EverythingonStart-v1.5.0-Portable-x64.exe --licenses
 ```
 
 ## 许可证与第三方组件

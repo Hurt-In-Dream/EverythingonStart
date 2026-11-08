@@ -1207,6 +1207,10 @@ public partial class MainWindow : Window
         if (exactApp != null)
             return exactApp;
 
+        var romanizedApp = apps.FirstOrDefault(a => PinyinSearchService.GetMatchScore(a.Title, query) is > 0 and < 70);
+        if (romanizedApp != null)
+            return romanizedApp;
+
         var topDoc = docs.FirstOrDefault(d => d.Title.StartsWith(qLower, StringComparison.OrdinalIgnoreCase));
         if (topDoc != null)
             return topDoc;
