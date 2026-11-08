@@ -6,12 +6,12 @@
 
 ## 下载与快速开始
 
-从 [v1.5.0 Release](https://github.com/Hurt-In-Dream/EverythingonStart/releases/tag/v1.5.0) 选择 Windows x64 版本：
+从 [v1.5.1 Release](https://github.com/Hurt-In-Dream/EverythingonStart/releases/tag/v1.5.1) 选择 Windows x64 版本：
 
 | 版本 | 下载 | 使用方式 |
 | --- | --- | --- |
-| 安装版 | [Setup-x64.exe](https://github.com/Hurt-In-Dream/EverythingonStart/releases/download/v1.5.0/EverythingonStart-v1.5.0-Setup-x64.exe) | 按用户安装，无需管理员权限，默认安装到 `%LOCALAPPDATA%\Programs\EverythingonStart` |
-| 绿色单文件版 | [Portable-x64.exe](https://github.com/Hurt-In-Dream/EverythingonStart/releases/download/v1.5.0/EverythingonStart-v1.5.0-Portable-x64.exe) | 下载一个 EXE 即可运行，无需旁置 DLL 或安装 .NET |
+| 安装版 | [Setup-x64.exe](https://github.com/Hurt-In-Dream/EverythingonStart/releases/download/v1.5.1/EverythingonStart-v1.5.1-Setup-x64.exe) | 按用户安装，无需管理员权限，默认安装到 `%LOCALAPPDATA%\Programs\EverythingonStart` |
+| 绿色单文件版 | [Portable-x64.exe](https://github.com/Hurt-In-Dream/EverythingonStart/releases/download/v1.5.1/EverythingonStart-v1.5.1-Portable-x64.exe) | 下载一个 EXE 即可运行，无需旁置 DLL 或安装 .NET |
 
 单文件版内置 .NET 与 Everything SDK，首次运行会将原生运行库解压到 .NET 的用户临时缓存；设置仍保存在用户目录，不是零磁盘写入模式。
 推荐 Windows 11 x64。文件检索需要安装并在后台运行 [Everything](https://www.voidtools.com/downloads/)。
@@ -27,7 +27,7 @@
 - 保留原文字匹配和 Everything 高级语法；明确大小写、全字及正则匹配规则时不自动展开文件拼音查询。
 - 包含 v1.4.2 的开始菜单输入干扰修复；更新前请从托盘退出旧实例。
 
-### 开发分支修复（尚未包含在 v1.5.0 发行包中）
+### v1.5.1 菜单交接与背景模糊修复
 
 - 原生菜单打字接管改为先显示无激活覆盖面板，确认布局和合成帧后再转移焦点；移除提前发送的全局 Esc 和第二次明显滑入。
 - 启动时完成有界的离屏渲染预热，不再立即 `Show` 后 `Hide`；程序窗口禁用额外的系统显示过渡，单按 Win 的 WPF 入场动画保留。

@@ -18,16 +18,17 @@ public static class PopupWindowPreparationService
     private static readonly MethodInfo? CompleteRender = MediaContext?.GetMethod("CompleteRender",
         BindingFlags.Instance | BindingFlags.NonPublic, null, Type.EmptyTypes, null);
     private static readonly PropertyInfo? Channel = MediaContext?.GetProperty("Channel", BindingFlags.Instance | BindingFlags.NonPublic);
+    public static bool IsAvailable => FromDispatcher != null && CompleteRender != null && Channel != null;
 
     public static bool TryPresent(Window window)
     {
         window.Dispatcher.VerifyAccess();
-        if (!window.IsVisible || FromDispatcher == null || CompleteRender == null || Channel == null) return false;
+        if (!window.IsVisible || !IsAvailable) return false;
         try
         {
-            var context = FromDispatcher.Invoke(null, [window.Dispatcher]);
-            if (context == null || Channel.GetValue(context) == null) return false;
-            CompleteRender.Invoke(context, null);
+            var context = FromDispatcher!.Invoke(null, [window.Dispatcher]);
+            if (context == null || Channel!.GetValue(context) == null) return false;
+            CompleteRender!.Invoke(context, null);
             return DwmFlush() >= 0;
         }
         catch (Exception ex) when (ex is TargetInvocationException or MemberAccessException or

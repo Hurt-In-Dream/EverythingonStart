@@ -21,13 +21,15 @@ public static class PackageDiagnosticsService
         using var tray = AppIconService.CreateTrayIcon();
         bool icon = AppIconService.WindowIcon != null && tray.Width > 0;
         string[] licenses = assembly.GetManifestResourceNames().Where(name => name.StartsWith("EverythingonStart.Licenses.", StringComparison.Ordinal)).ToArray();
+        bool presentationFence = PopupWindowPreparationService.IsAvailable;
         output.WriteLine(JsonSerializer.Serialize(new
         {
             application = "EverythingonStart", version = assembly.GetName().Version?.ToString(3),
             nativeLibraries = native, iconAvailable = icon, embeddedLicenseCount = licenses.Length,
+            presentationFenceAvailable = presentationFence,
             externalManagedDllPresent = File.Exists(Path.Combine(AppContext.BaseDirectory, "EverythingonStart.dll"))
         }));
-        return native.Values.All(value => value) && icon && licenses.Length >= 8 ? 0 : 1;
+        return native.Values.All(value => value) && icon && licenses.Length >= 8 && presentationFence ? 0 : 1;
     }
 
     public static void PrintLicenses(TextWriter output)
