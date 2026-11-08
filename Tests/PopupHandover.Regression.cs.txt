@@ -1,0 +1,190 @@
+using System.IO;
+using System.Reflection;
+using System.Runtime.InteropServices;
+using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Interop;
+using System.Windows.Media;
+using System.Windows.Threading;
+using EverythingonStart.Services;
+
+internal static class Program
+{
+    private static int checks, failures;
+    [STAThread] private static int Main(string[] args)
+    {
+        var type = typeof(StartMenuIndexService).Assembly.GetType("EverythingonStart.Services.PopupHandoverController");
+        string hook = File.ReadAllText(Path.Combine(args[0], "Services", "WinKeyHookService.cs"));
+        string main = File.ReadAllText(Path.Combine(args[0], "MainWindow.xaml.cs"));
+        string appSource = File.ReadAllText(Path.Combine(args[0], "App.xaml.cs"));
+        string callback = hook[hook.IndexOf("private IntPtr HookCallback")..hook.IndexOf("private void ScheduleStartMenuBoundsProbe")];
+        bool earlyEsc = callback.Contains("DismissNativeStartMenu();");
+        Console.WriteLine($"HOOK: native-dismiss-before-cover={earlyEsc}; rendered-handover-controller={type != null}");
+        Check("no-early-global-Esc", !earlyEsc);
+        Check("captured-native-host-revalidated", callback.Contains("IsStartMenuHostWindowCached(nativeWindow)"));
+        Check("nonactivated-cover-before-show", main.Contains("ShowActivated = !coverNativeMenu;") && main.Contains("SetHandoverCover(true)"));
+        Check("typing-handover-has-no-second-slide", main.Contains("if (!fromStartMenuTyping && _settingsService.Current.EnablePopupAnimation)"));
+        Check("buffered-extra-input-does-not-focus-cover", main.Contains("if (_popupHandover?.IsPending != true)"));
+        Check("bounded-render-wait", main.Contains("TimeSpan.FromMilliseconds(350)"));
+        Check("fullscreen-taskbar-timer-does-not-activate-cover-early", main.Contains("if (_popupHandover?.IsPending != true && selfHwnd"));
+        Check("queued-Win-tap-does-not-close-new-typing-popup", appSource.Contains("bool popupWasVisible = _mainWindow.IsVisible;") &&
+            appSource.Contains("else if (popupWasVisible && _mainWindow.IsVisible)"));
+        Check("native-window-transition-disabled-before-first-show", main.Contains("WindowBackdropService.DisableNativeTransitions(hwnd);"));
+        Check("startup-uses-shared-render-preparation", main.Contains("PopupWindowPreparationService.PreWarm(this);"));
+        if (type == null)
+        {
+            Console.WriteLine($"Summary: {checks - failures}/{checks} passed");
+            return 1;
+        }
+        object Controller(Func<bool> valid, Func<bool> present, Action activate, Action cancel) =>
+            Activator.CreateInstance(type, valid, present, activate, cancel)!;
+        void Frame(object controller, int timestamp) => type.GetMethod("OnFrame")!.Invoke(controller, [TimeSpan.FromMilliseconds(timestamp)]);
+        void Cancel(object controller) => type.GetMethod("Cancel")!.Invoke(controller, null);
+        void Ready(object controller) => type.GetMethod("MarkCoverReady")!.Invoke(controller, null);
+        bool Pending(object controller) => (bool)type.GetProperty("IsPending")!.GetValue(controller)!;
+        var events = new List<string>();
+        var normal = Controller(() => true, () => { events.Add("present"); return true; }, () => events.Add("activate"), () => events.Add("cancel"));
+        Frame(normal, 0); Frame(normal, 5);
+        Check("global-render-events-before-own-content-do-not-activate", Pending(normal) && events.Count == 0);
+        Ready(normal);
+        Frame(normal, 10); Frame(normal, 10);
+        Check("first-and-duplicate-frame-do-not-activate", Pending(normal) && events.Count == 0);
+        Frame(normal, 26); Frame(normal, 42); Cancel(normal);
+        Check("present-cover-before-one-activation", !Pending(normal) && events.SequenceEqual(new[] { "present", "activate" }));
+        events.Clear(); bool compositorReady = false;
+        var stalled = Controller(() => true, () => compositorReady, () => events.Add("activate"), () => events.Add("cancel"));
+        Ready(stalled);
+        Frame(stalled, 10); Frame(stalled, 26); Frame(stalled, 42);
+        Check("failed-presentation-keeps-original-menu", Pending(stalled) && events.Count == 0);
+        compositorReady = true; Frame(stalled, 58);
+        Check("presentation-recovers-without-Esc", events.SequenceEqual(new[] { "activate" }));
+        events.Clear(); bool originalForeground = true;
+        var changed = Controller(() => originalForeground, () => { events.Add("present"); return true; }, () => events.Add("activate"), () => events.Add("cancel"));
+        Ready(changed);
+        Frame(changed, 10); originalForeground = false; Frame(changed, 26);
+        Check("foreign-foreground-cancels-without-stealing-focus", !Pending(changed) && events.SequenceEqual(new[] { "cancel" }));
+        events.Clear(); bool fenceForeground = true;
+        var fenceRace = Controller(() => fenceForeground, () => { fenceForeground = false; return true; },
+            () => events.Add("activate"), () => events.Add("cancel"));
+        Ready(fenceRace); Frame(fenceRace, 10); Frame(fenceRace, 26); Frame(fenceRace, 42);
+        Check("foreground-revalidated-after-compositor-fence", events.SequenceEqual(new[] { "cancel" }));
+        events.Clear(); var timeout = Controller(() => true, () => false, () => events.Add("activate"), () => events.Add("cancel"));
+        Ready(timeout);
+        Frame(timeout, 10); Cancel(timeout); Cancel(timeout); Frame(timeout, 26);
+        Check("timeout-hide-close-cancel-is-idempotent", !Pending(timeout) && events.SequenceEqual(new[] { "cancel" }));
+        events.Clear(); var alreadyInvalid = Controller(() => false, () => true, () => events.Add("activate"), () => events.Add("cancel"));
+        Frame(alreadyInvalid, 10);
+        Check("expired-session-never-activates", events.SequenceEqual(new[] { "cancel" }));
+
+        var app = new Application { ShutdownMode = ShutdownMode.OnExplicitShutdown };
+        IntPtr foreground = GetForegroundWindow();
+        // Every sampled pixel is covered by owned synthetic windows; no desktop captures are saved.
+        var original = new Window { Left = 40, Top = 40, Width = 256, Height = 256, WindowStyle = WindowStyle.None,
+            ResizeMode = ResizeMode.NoResize, ShowActivated = false, ShowInTaskbar = false, Topmost = true, Background = Brushes.Red,
+            Content = new Border { Background = Brushes.Red } };
+        var cover = new Window { Left = 40, Top = 40, Width = 256, Height = 256, WindowStyle = WindowStyle.None,
+            ResizeMode = ResizeMode.NoResize, ShowActivated = false, ShowInTaskbar = false, Topmost = true, Background = Brushes.Lime,
+            Content = new Border { Background = Brushes.Lime } };
+        bool ownedWindowActivated = false;
+        original.Activated += (_, _) => ownedWindowActivated = true;
+        cover.Activated += (_, _) => ownedWindowActivated = true;
+        var preparationType = typeof(WindowBackdropService).Assembly.GetType("EverythingonStart.Services.PopupWindowPreparationService");
+        bool preWarmed = preparationType != null && (bool)preparationType.GetMethod("PreWarm")!.Invoke(null, [cover])!;
+        Check("cold-process-shared-prewarm-completes-without-activation", preWarmed && !cover.IsVisible && !cover.ShowActivated && cover.Left == 40 && cover.Top == 40);
+        bool visibleCoverBeforeDismiss = false, completed = false;
+        string pixelDescription = "not-sampled";
+        int frames = 0;
+        int presentationResult = int.MinValue;
+        var frameTimes = new List<double>();
+        object CreateLiveController() => Controller(() => original.IsVisible && cover.IsVisible, () =>
+            {
+                SetWindowPos(new WindowInteropHelper(cover).Handle, new IntPtr(-1), 0, 0, 0, 0, 0x0001 | 0x0002 | 0x0010 | 0x0040);
+                bool presented = preparationType != null && (bool)preparationType.GetMethod("TryPresent")!.Invoke(null, [cover])!;
+                presentationResult = presented ? 0 : -1;
+                return presented;
+            },
+            () =>
+            {
+                using var bitmap = new System.Drawing.Bitmap(1, 1);
+                var origin = cover.PointToScreen(new Point(50, 50));
+                Console.WriteLine($"SAMPLED-HWND: cover={new WindowInteropHelper(cover).Handle}; original={new WindowInteropHelper(original).Handle}; hit={WindowFromPoint(new POINT { X = (int)origin.X, Y = (int)origin.Y })}");
+                using (var graphics = System.Drawing.Graphics.FromImage(bitmap)) graphics.CopyFromScreen((int)origin.X, (int)origin.Y, 0, 0, new System.Drawing.Size(1, 1));
+                var pixel = bitmap.GetPixel(0, 0);
+                pixelDescription = $"({pixel.R},{pixel.G},{pixel.B})";
+                visibleCoverBeforeDismiss = original.IsVisible && pixel.G > 200 && pixel.R < 50;
+                original.Hide(); completed = true;
+            }, () => completed = true);
+        var live = CreateLiveController();
+        bool layoutReady = false;
+        EventHandler rendered = (_, value) =>
+        {
+            if (value is RenderingEventArgs rendering)
+            {
+                frames++;
+                frameTimes.Add(rendering.RenderingTime.TotalMilliseconds);
+                if (!layoutReady && cover.Content is Border { IsLoaded: true, IsMeasureValid: true, IsArrangeValid: true })
+                {
+                    layoutReady = true;
+                    SetWindowPos(new WindowInteropHelper(cover).Handle, new IntPtr(-1), 0, 0, 0, 0, 0x0001 | 0x0002 | 0x0010 | 0x0040);
+                    Ready(live);
+                }
+                var current = live;
+                var timestamp = rendering.RenderingTime;
+                cover.Dispatcher.BeginInvoke(() =>
+                {
+                    if (ReferenceEquals(live, current)) type.GetMethod("OnFrame")!.Invoke(current, [timestamp]);
+                }, DispatcherPriority.Input);
+            }
+        };
+        // The real native Start-menu HWND is already rendered before typing is intercepted.
+        // Prepare that fixture first; only the replacement cover is cold in this scenario.
+        original.Show();
+        var preparation = new DispatcherFrame();
+        var preparationTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(120) };
+        preparationTimer.Tick += (_, _) => preparation.Continue = false;
+        preparationTimer.Start(); Dispatcher.PushFrame(preparation); preparationTimer.Stop();
+        var disableTransitions = typeof(WindowBackdropService).GetMethod("DisableNativeTransitions");
+        var coverHwnd = new WindowInteropHelper(cover).EnsureHandle();
+        bool transitionsDisabled = disableTransitions != null && (bool)disableTransitions.Invoke(null, [coverHwnd])!;
+        Console.WriteLine($"NATIVE-TRANSITION: setter-accepted={transitionsDisabled}");
+        Check("owned-cover-native-transition-request-accepted", transitionsDisabled);
+        cover.Show();
+        SetWindowPos(new WindowInteropHelper(cover).Handle, new IntPtr(-1), 0, 0, 0, 0, 0x0001 | 0x0002 | 0x0010 | 0x0040);
+        CompositionTarget.Rendering += rendered;
+        var dispatcherFrame = new DispatcherFrame();
+        var timer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(10) };
+        int ticks = 0;
+        timer.Tick += (_, _) => { if (completed || ++ticks >= 100) dispatcherFrame.Continue = false; };
+        timer.Start(); Dispatcher.PushFrame(dispatcherFrame); timer.Stop();
+        CompositionTarget.Rendering -= rendered;
+        Console.WriteLine($"LIVE-HANDOVER: frames={frames}; pixel={pixelDescription}; cover-presented-before-original-dismiss={visibleCoverBeforeDismiss}");
+        var content = (Border)cover.Content;
+        Console.WriteLine($"LIVE-DETAIL: loaded={content.IsLoaded}; measure={content.IsMeasureValid}; arrange={content.IsArrangeValid}; ready={layoutReady}; pending={Pending(live)}; WPF-and-DWM-fence={(presentationResult == 0)}; render-mode={HwndSource.FromHwnd(coverHwnd)!.CompositionTarget.RenderMode}; times={string.Join(',', frameTimes)}");
+        Check("real-compositor-cover-precedes-original-dismiss", completed && visibleCoverBeforeDismiss && frames >= 2);
+        for (int cycle = 1; cycle <= 4; cycle++)
+        {
+            cover.Hide(); original.Show(); cover.Show();
+            SetWindowPos(new WindowInteropHelper(cover).Handle, new IntPtr(-1), 0, 0, 0, 0, 0x0001 | 0x0002 | 0x0010 | 0x0040);
+            completed = false; visibleCoverBeforeDismiss = false; layoutReady = false; frames = 0; ticks = 0;
+            live = CreateLiveController(); dispatcherFrame = new DispatcherFrame();
+            CompositionTarget.Rendering += rendered;
+            timer.Start(); Dispatcher.PushFrame(dispatcherFrame); timer.Stop();
+            CompositionTarget.Rendering -= rendered;
+            Check($"cached-reopen-cover-before-dismiss-{cycle}", completed && visibleCoverBeforeDismiss && frames >= 2);
+        }
+        cover.Close(); original.Close();
+        Console.WriteLine($"FOREGROUND: initial={foreground}; final={GetForegroundWindow()}; owned-window-activated={ownedWindowActivated}");
+        Check("test-owned-windows-never-activate", !ownedWindowActivated);
+        Console.WriteLine($"Summary: {checks - failures}/{checks} passed");
+        app.Shutdown(); return failures == 0 ? 0 : 1;
+    }
+    private static void Check(string name, bool pass)
+    {
+        checks++; if (!pass) failures++;
+        Console.WriteLine($"{(pass ? "PASS" : "FAIL")} {name}");
+    }
+    [DllImport("user32.dll")] private static extern IntPtr GetForegroundWindow();
+    [StructLayout(LayoutKind.Sequential)] private struct POINT { public int X, Y; }
+    [DllImport("user32.dll")] private static extern IntPtr WindowFromPoint(POINT point);
+    [DllImport("user32.dll")] private static extern bool SetWindowPos(IntPtr hwnd, IntPtr insertAfter, int x, int y, int cx, int cy, uint flags);
+}

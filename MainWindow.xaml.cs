@@ -6,6 +6,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Interop;
+using System.Windows.Media;
 using System.Windows.Media.Animation;
 using System.Windows.Threading;
 using EverythingonStart.Models;
@@ -60,6 +61,10 @@ public partial class MainWindow : Window
     private bool _noTaskbarStyleApplied;
     private readonly AppThemeService _themeService;
     private readonly WindowBackdropService _backdropService;
+    private PopupHandoverController? _popupHandover;
+    private EventHandler? _popupHandoverRendering;
+    private DispatcherTimer? _popupHandoverDeadline;
+    private DispatcherTimer? _popupCoverRelease;
     private bool _isShowingDefaultLanding;
     private long _searchVersion;
     private int _taskbarKeepTopTicksRemaining;
@@ -114,7 +119,7 @@ public partial class MainWindow : Window
             if (e.NewValue is false) CancelWebPreview();
             else if (_selectedItem?.IsWeb == true) UpdatePreviewPane(_selectedItem);
         };
-        Closed += (_, _) => { CancelWebPreview(); _webPreviewService.Dispose(); };
+        Closed += (_, _) => { CancelPopupHandover(); CancelWebPreview(); _webPreviewService.Dispose(); };
 
         _inputHandoverFocusTimer = new DispatcherTimer(DispatcherPriority.Input)
         {
@@ -136,7 +141,7 @@ public partial class MainWindow : Window
 
             _taskbarKeepTopTicksRemaining--;
             var selfHwnd = new WindowInteropHelper(this).Handle;
-            if (selfHwnd != IntPtr.Zero && GetForegroundWindow() != selfHwnd && !_suppressDeactivateHide)
+            if (_popupHandover?.IsPending != true && selfHwnd != IntPtr.Zero && GetForegroundWindow() != selfHwnd && !_suppressDeactivateHide)
             {
                 ActivateWindowForcefully();
                 SearchTextBox.Focus();
@@ -175,6 +180,7 @@ public partial class MainWindow : Window
         if (hwnd != IntPtr.Zero)
         {
             ApplyNoTaskbarWindowStyle(hwnd);
+            WindowBackdropService.DisableNativeTransitions(hwnd);
         }
     }
 
@@ -239,13 +245,7 @@ public partial class MainWindow : Window
 
     public void PreWarm()
     {
-        Left = -10000;
-        Top = -10000;
-        ShowActivated = false;
-        Show();
-        UpdateLayout();
-        Hide();
-        ShowActivated = true;
+        PopupWindowPreparationService.PreWarm(this);
     }
 
     public void TogglePopup()
@@ -262,55 +262,61 @@ public partial class MainWindow : Window
 
     public void ShowPopup(string? initialText)
     {
+        CancelPopupHandover();
         long now = Environment.TickCount64;
         bool fromStartMenuTyping = !string.IsNullOrEmpty(initialText);
+        bool coverNativeMenu = fromStartMenuTyping && _winKeyHookService?.CanContinueNativeHandover() == true;
         _openingGraceUntilTick = now + 650;
         _ignoreEscapeUntilTick = fromStartMenuTyping ? now + 260 : 0;
 
         ApplyInitialSearchItemOnOpen();
         PositionLikeStartMenu();
-        ApplyVisualSettings();
         UpdateEngineBadgeFast();
         UpdateSortAndFilterBadges();
 
         // 检测呼出前是否存在全屏窗口，仅在存在全屏窗口时执行降级与任务栏置顶
         RevealAndRaiseTaskbar();
         _backdropService.PrepareForShow();
+        ResetPopupAnimationTransforms();
+        if (coverNativeMenu)
+            _backdropService.SetHandoverCover(true);
+        else if (!fromStartMenuTyping && _settingsService.Current.EnablePopupAnimation)
+            PopupSlideTransform.Y = 18;
 
-        if (!IsVisible)
-        {
-            ShowActivated = true;
-            Show();
-        }
-
-        Opacity = 1.0;
-        if (_settingsService.Current.EnablePopupAnimation)
-            PlayPopupShowAnimation();
-        else
-            ResetPopupAnimationTransforms();
-
-        ActivateWindowForcefully();
-
+        // Set text before showing, but don't focus a non-activated cover and prematurely dismiss Start.
         if (fromStartMenuTyping)
         {
             SearchTextBox.Text = initialText!;
             SearchTextBox.CaretIndex = SearchTextBox.Text.Length;
-            SearchTextBox.Focus();
-            Keyboard.Focus(SearchTextBox);
-
-            _inputHandoverFocusReadySinceTick = 0;
-            _inputHandoverFocusTimer.Start();
         }
+        else if (_settingsService.Current.ClearSearchOnOpen)
+            SearchTextBox.Clear();
         else
-        {
-            if (_settingsService.Current.ClearSearchOnOpen)
-                SearchTextBox.Clear();
-            else
-                SearchTextBox.SelectAll();
+            SearchTextBox.SelectAll();
 
-            SearchTextBox.Focus();
-            Keyboard.Focus(SearchTextBox);
+        if (!IsVisible)
+        {
+            ShowActivated = !coverNativeMenu;
+            Show();
         }
+
+        if (coverNativeMenu)
+        {
+            // SW_SHOWNOACTIVATE alone can leave a reused popup below the native topmost menu.
+            // Raise the owned cover without changing foreground or sending synthetic keys.
+            var hwnd = new WindowInteropHelper(this).Handle;
+            SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, 0, 0,
+                SWP_NOSIZE | SWP_NOMOVE | SWP_NOACTIVATE | SWP_SHOWWINDOW);
+        }
+
+        Opacity = 1.0;
+        if (!fromStartMenuTyping && _settingsService.Current.EnablePopupAnimation)
+            PlayPopupShowAnimation();
+
+        if (coverNativeMenu)
+            BeginPopupHandover();
+        else
+            ActivatePopupAndFocus(fromStartMenuTyping);
 
         _taskbarKeepTopTimer.Stop();
         if (_demotedFullscreenWindows.Count > 0)
@@ -321,6 +327,104 @@ public partial class MainWindow : Window
 
         if (string.IsNullOrWhiteSpace(SearchTextBox.Text) && !_isShowingDefaultLanding)
             PopulateDefaultLandingEntries();
+    }
+
+    private void BeginPopupHandover()
+    {
+        bool layoutReady = false;
+        _popupHandover = new PopupHandoverController(
+            () => IsVisible && _winKeyHookService?.CanContinueNativeHandover() == true,
+            () =>
+            {
+                SetWindowPos(new WindowInteropHelper(this).Handle, HWND_TOPMOST, 0, 0, 0, 0,
+                    SWP_NOSIZE | SWP_NOMOVE | SWP_NOACTIVATE | SWP_SHOWWINDOW);
+                return PopupWindowPreparationService.TryPresent(this);
+            },
+            () =>
+            {
+                StopPopupHandoverWatch();
+                ActivatePopupAndFocus(fromStartMenuTyping: true);
+                // Keep the old menu's closing animation behind an opaque owned cover.
+                _popupCoverRelease = new DispatcherTimer(DispatcherPriority.Background)
+                {
+                    Interval = TimeSpan.FromMilliseconds(120)
+                };
+                _popupCoverRelease.Tick += (_, _) =>
+                {
+                    _popupCoverRelease?.Stop();
+                    _popupCoverRelease = null;
+                    _backdropService.SetHandoverCover(false);
+                };
+                _popupCoverRelease.Start();
+            },
+            () =>
+            {
+                StopPopupHandoverWatch();
+                _backdropService.SetHandoverCover(false);
+                _winKeyHookService?.CompleteInputHandover();
+                HidePopup();
+            });
+        _popupHandoverRendering = (_, args) =>
+        {
+            if (args is RenderingEventArgs rendering)
+            {
+                if (!layoutReady && RootCardBorder.IsLoaded && RootCardBorder.IsMeasureValid && RootCardBorder.IsArrangeValid)
+                {
+                    layoutReady = true;
+                    SetWindowPos(new WindowInteropHelper(this).Handle, HWND_TOPMOST, 0, 0, 0, 0,
+                        SWP_NOSIZE | SWP_NOMOVE | SWP_NOACTIVATE | SWP_SHOWWINDOW);
+                    _popupHandover?.MarkCoverReady();
+                }
+                var handover = _popupHandover;
+                var timestamp = rendering.RenderingTime;
+                // Run the fence AFTER this WPF render message has submitted its changes.
+                Dispatcher.BeginInvoke(() =>
+                {
+                    if (ReferenceEquals(_popupHandover, handover))
+                        handover?.OnFrame(timestamp);
+                }, DispatcherPriority.Input);
+            }
+        };
+        CompositionTarget.Rendering += _popupHandoverRendering;
+        _popupHandoverDeadline = new DispatcherTimer(DispatcherPriority.Input)
+        {
+            Interval = TimeSpan.FromMilliseconds(350)
+        };
+        _popupHandoverDeadline.Tick += (_, _) => _popupHandover?.Cancel();
+        _popupHandoverDeadline.Start();
+    }
+
+    private void StopPopupHandoverWatch()
+    {
+        if (_popupHandoverRendering != null)
+            CompositionTarget.Rendering -= _popupHandoverRendering;
+        _popupHandoverRendering = null;
+        _popupHandoverDeadline?.Stop();
+        _popupHandoverDeadline = null;
+        _popupHandover = null;
+    }
+
+    private void CancelPopupHandover()
+    {
+        var pending = _popupHandover;
+        StopPopupHandoverWatch();
+        pending?.Cancel();
+        _popupCoverRelease?.Stop();
+        _popupCoverRelease = null;
+        _backdropService.SetHandoverCover(false);
+    }
+
+    private void ActivatePopupAndFocus(bool fromStartMenuTyping)
+    {
+        ShowActivated = true;
+        ActivateWindowForcefully();
+        SearchTextBox.Focus();
+        Keyboard.Focus(SearchTextBox);
+        if (fromStartMenuTyping)
+        {
+            _inputHandoverFocusReadySinceTick = 0;
+            _inputHandoverFocusTimer.Start();
+        }
     }
 
     private void ResetPopupAnimationTransforms()
@@ -342,7 +446,8 @@ public partial class MainWindow : Window
 
         SearchTextBox.Text += extraText;
         SearchTextBox.CaretIndex = SearchTextBox.Text.Length;
-        SearchTextBox.Focus();
+        if (_popupHandover?.IsPending != true)
+            SearchTextBox.Focus();
     }
 
     private void RetryInputHandoverFocus()
@@ -386,7 +491,6 @@ public partial class MainWindow : Window
         {
             EasingFunction = slideEase
         };
-        Timeline.SetDesiredFrameRate(slideAnim, 60);
 
         PopupSlideTransform.BeginAnimation(
             System.Windows.Media.TranslateTransform.YProperty,
@@ -422,6 +526,7 @@ public partial class MainWindow : Window
 
     public void HidePopup()
     {
+        CancelPopupHandover();
         CancelWebPreview();
         _inputHandoverFocusTimer.Stop();
         _winKeyHookService?.CompleteInputHandover();
@@ -681,6 +786,7 @@ public partial class MainWindow : Window
             return;
 
         var prevFg = GetForegroundWindow();
+        bool previousWasNativeMenu = prevFg != IntPtr.Zero && prevFg == _winKeyHookService?.NativeHandoverWindow;
         if (prevFg != IntPtr.Zero && prevFg != hwnd)
         {
             // 合成 Alt 键扩展输入以解除 Windows 对 StartMenuExperienceHost (AppContainer) 的前台锁
@@ -691,7 +797,8 @@ public partial class MainWindow : Window
             keybd_event(VK_MENU, 0, KEYEVENTF_EXTENDEDKEY | KEYEVENTF_KEYUP, UIntPtr.Zero);
 
             // 若前一个前台窗口是开始菜单 CoreWindow，向其发送失焦通知促使其立即收起
-            PostMessageW(prevFg, WM_ACTIVATE, IntPtr.Zero, hwnd);
+            if (previousWasNativeMenu)
+                PostMessageW(prevFg, WM_ACTIVATE, IntPtr.Zero, hwnd);
         }
         else
         {

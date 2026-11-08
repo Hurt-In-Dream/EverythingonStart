@@ -16,6 +16,9 @@ internal static class Program
 {
     private const BindingFlags Private = BindingFlags.Instance | BindingFlags.NonPublic;
     private static int checks, failures;
+    private static Point sampleOrigin;
+    private static bool ownedWindowActivated;
+    private static void ObserveActivation(Window window) => window.Activated += (_, _) => ownedWindowActivated = true;
     [STAThread] private static int Main(string[] args)
     {
         var app = new Application { ShutdownMode = ShutdownMode.OnExplicitShutdown };
@@ -29,6 +32,7 @@ internal static class Program
             new IconCacheService(), new ActionExecutorService(everything, settings), bounds) { Left = -10000, Top = -10000, ShowActivated = false };
         var options = new SettingsWindow(settings, everything, bounds, () => { }, 3)
             { Left = -10000, Top = -10000, WindowStartupLocation = WindowStartupLocation.Manual, ShowActivated = false, ShowInTaskbar = false };
+        ObserveActivation(main); ObserveActivation(options);
         var type = typeof(WindowBackdropService);
         if (type.GetMethod("ApplyNativeBackdrop") == null)
         {
@@ -80,6 +84,7 @@ internal static class Program
         bool highContrast = false, available = true; int enables = 0, disables = 0;
         var surface = new Border(); var shadow = new Border();
         var mockWindow = new Window { Content = surface, Left = -10000, Top = -10000, ShowActivated = false, Width = 160, Height = 160 };
+        ObserveActivation(mockWindow);
         Func<IntPtr, bool, bool> apply = (_, enable) => { if (enable) enables++; else disables++; return available; };
         var mock = Activator.CreateInstance(type, [mockWindow, surface, settings, shadow, apply, (Func<bool>)(() => highContrast)])!;
         mockWindow.Show();
@@ -91,6 +96,18 @@ internal static class Program
         Check("native-unavailable-fallback", !Applied(mock) && shadow.Visibility == Visibility.Visible);
         available = true; Apply(mock);
         Check("recovers-after-native-unavailable", Applied(mock));
+        var coverMethod = type.GetMethod("SetHandoverCover");
+        Check("handover-opaque-cover-supported", coverMethod != null);
+        if (coverMethod != null)
+        {
+            int beforeCover = enables;
+            coverMethod.Invoke(mock, [true]);
+            Check("handover-cover-blocks-native-menu-ghosting", ((SolidColorBrush)surface.Background).Color.A == 255);
+            Check("handover-cover-does-not-reapply-DWM", enables == beforeCover);
+            coverMethod.Invoke(mock, [false]);
+            Check("handover-cover-restores-configured-tint", ((SolidColorBrush)surface.Background).Color.A == 191);
+            Check("handover-cover-does-not-change-user-opacity", settings.Current.WindowOpacityPercent == 75);
+        }
         mockWindow.Close();
         Check("close-clears-native-state", !Applied(mock) && (bool)type.GetField("_disposed", Private)!.GetValue(mock)!);
         int afterClose = disables;
@@ -106,7 +123,8 @@ internal static class Program
         var iconType = typeof(MainWindow).Assembly.GetType("EverythingonStart.Services.AppIconService")!;
         using (var icon = (System.Drawing.Icon)iconType.GetMethod("CreateTrayIcon")!.Invoke(null, null)!) Check("native-tray-icon-loads", icon.Width == 32 && icon.Height == 32);
         LiveCompositor(type, settings);
-        Check("foreground-unchanged", foreground == GetForegroundWindow());
+        Console.WriteLine($"FOREGROUND: initial={foreground}; final={GetForegroundWindow()}; owned-window-activated={ownedWindowActivated}");
+        Check("owned-test-windows-never-activate", !ownedWindowActivated);
         (app.Resources["AppThemeService"] as IDisposable)?.Dispose();
         Console.WriteLine("MODIFIED: native-backdrop=per-window-Accent-acrylic; source=live-DWM-composition; GIF-and-static-preview=none");
         Console.WriteLine($"Summary: {checks - failures}/{checks} passed"); app.Shutdown(); return failures == 0 ? 0 : 1;
@@ -119,21 +137,58 @@ internal static class Program
         var surface = new Border();
         var overlay = new Window { Left = 40, Top = 40, Width = 256, Height = 256, WindowStyle = WindowStyle.None, ResizeMode = ResizeMode.NoResize,
             ShowActivated = false, ShowInTaskbar = false, Topmost = true, Background = Brushes.Transparent, Content = surface };
+        ObserveActivation(background); ObserveActivation(overlay);
         settings.Current.EnableGaussianBlur = false;
+        settings.Current.WindowOpacityPercent = 75;
         var controller = Activator.CreateInstance(type, [overlay, surface, settings, null, null, (Func<bool>)(() => false)])!;
         background.Show(); overlay.Show();
+        sampleOrigin = overlay.PointToScreen(new Point(50, 50));
         // Match the native path's 75% tint so variance reduction is not merely an opacity change.
         surface.Background = new SolidColorBrush(Color.FromArgb(191, 30, 32, 36)); Pump(250); DwmFlush();
         var sharp = Measure();
         settings.Current.EnableGaussianBlur = true; type.GetMethod("ApplyCurrentSettings")!.Invoke(controller, null); Pump(200); DwmFlush();
         var soft = Measure();
+        Console.WriteLine("NATIVE-BACKEND: " + type.GetProperty("SourceDescription")!.GetValue(controller));
         Console.WriteLine($"COMPOSITOR: sharp-variance={sharp.Variance:F2}; acrylic-variance={soft.Variance:F2}");
         Check("native-blur-softens-synthetic-pixels", soft.Variance < sharp.Variance * 0.25);
         background.Background = Brushes.Red; Pump(180); DwmFlush(); var red = Measure();
         background.Background = Brushes.Blue; Pump(180); DwmFlush(); var blue = Measure();
         Console.WriteLine($"DYNAMIC: red=({red.Red:F1},{red.Blue:F1}); blue=({blue.Red:F1},{blue.Blue:F1})");
         Check("live-background-updates-without-file-or-refresh", red.Red > blue.Red + 1 && blue.Blue > red.Blue + 1);
+        // Reproduce this device's actual 95% opacity, without changing the user's settings.
+        settings.Current.WindowOpacityPercent = 95;
+        type.GetMethod("ApplyCurrentSettings")!.Invoke(controller, null);
+        background.Background = Brushes.Red; Pump(180); DwmFlush(); var red95 = Measure();
+        background.Background = Brushes.Blue; Pump(180); DwmFlush(); var blue95 = Measure();
+        Console.WriteLine($"DEVICE-95: red=({red95.Red:F1},{red95.Blue:F1}); blue=({blue95.Red:F1},{blue95.Blue:F1})");
+        Check("default-95-percent-tint-retains-visible-live-background", red95.Red > blue95.Red + 5 && blue95.Blue > red95.Blue + 5);
+        Check("default-95-percent-tint-not-silently-lowered", ((SolidColorBrush)surface.Background).Color.A == 242);
+        ProbePolicies(overlay, surface, background);
         overlay.Close(); background.Close();
+    }
+    private static void ProbePolicies(Window overlay, Border surface, Window background)
+    {
+        Console.WriteLine($"RENDER: Tier={RenderCapability.Tier >> 16}; DPI={VisualTreeHelper.GetDpi(overlay).DpiScaleX}; sample={sampleOrigin}");
+        double cleanDelta = 0, duplicateDelta = 0;
+        foreach (var policy in new[] { (4, 16, 0x01000000u), (4, 18, 0x01000000u) })
+        {
+            var accent = new ACCENT_POLICY { State = policy.Item1, Flags = policy.Item2, Color = policy.Item3 };
+            IntPtr memory = Marshal.AllocHGlobal(Marshal.SizeOf<ACCENT_POLICY>());
+            try
+            {
+                Marshal.StructureToPtr(accent, memory, false);
+                var data = new WINDOWCOMPOSITIONATTRIBDATA { Attribute = 19, Data = memory, Size = Marshal.SizeOf<ACCENT_POLICY>() };
+                bool applied = SetWindowCompositionAttribute(new WindowInteropHelper(overlay).Handle, ref data);
+                surface.Background = new SolidColorBrush(Color.FromArgb(242, 30, 32, 36));
+                background.Background = Brushes.Red; Pump(180); int hr = DwmFlush(); var red = Measure();
+                background.Background = Brushes.Blue; Pump(180); DwmFlush(); var blue = Measure();
+                double delta = Math.Min(red.Red - blue.Red, blue.Blue - red.Blue);
+                if (policy.Item2 == 16) cleanDelta = delta; else duplicateDelta = delta;
+                Console.WriteLine($"POLICY: state={policy.Item1}; flags={policy.Item2}; alpha=242; accepted={applied}; hr=0x{hr:X8}; deltaR={red.Red - blue.Red:F2}; deltaB={blue.Blue - red.Blue:F2}");
+            }
+            finally { Marshal.FreeHGlobal(memory); }
+        }
+        Check("duplicate-native-tint-flag-reproduces-device-issue", cleanDelta > 5 && cleanDelta > duplicateDelta * 3);
     }
     private static DrawingBrush Pattern()
     {
@@ -145,7 +200,7 @@ internal static class Program
     private static (double Variance, double Red, double Blue) Measure()
     {
         using var bitmap = new System.Drawing.Bitmap(120, 120);
-        using (var graphics = System.Drawing.Graphics.FromImage(bitmap)) graphics.CopyFromScreen(90, 90, 0, 0, new System.Drawing.Size(120, 120));
+        using (var graphics = System.Drawing.Graphics.FromImage(bitmap)) graphics.CopyFromScreen((int)sampleOrigin.X, (int)sampleOrigin.Y, 0, 0, new System.Drawing.Size(120, 120));
         double r = 0, rr = 0, b = 0;
         for (int y = 0; y < 120; y++) for (int x = 0; x < 120; x++) { var p = bitmap.GetPixel(x, y); r += p.R; rr += p.R * p.R; b += p.B; }
         return (rr / 14400 - Math.Pow(r / 14400, 2), r / 14400, b / 14400);
@@ -169,4 +224,7 @@ internal static class Program
     [DllImport("user32.dll")] private static extern int GetWindowRgn(IntPtr hwnd, IntPtr region);
     [DllImport("user32.dll")] private static extern IntPtr GetForegroundWindow();
     [DllImport("dwmapi.dll")] private static extern int DwmFlush();
+    [StructLayout(LayoutKind.Sequential)] private struct ACCENT_POLICY { public int State, Flags; public uint Color; public int Animation; }
+    [StructLayout(LayoutKind.Sequential)] private struct WINDOWCOMPOSITIONATTRIBDATA { public int Attribute; public IntPtr Data; public int Size; }
+    [DllImport("user32.dll", SetLastError = true)] private static extern bool SetWindowCompositionAttribute(IntPtr hwnd, ref WINDOWCOMPOSITIONATTRIBDATA data);
 }

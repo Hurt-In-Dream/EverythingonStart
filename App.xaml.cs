@@ -137,13 +137,16 @@ public partial class App : System.Windows.Application
         _mainWindow.AttachWinKeyHookService(_winKeyHookService);
         _winKeyHookService.SingleWinKeyTapped += () =>
         {
+            // A high-priority typing handover may execute before this queued Win-tap callback.
+            // Don't let the earlier tap close a replacement popup that was hidden at tap time.
+            bool popupWasVisible = _mainWindow.IsVisible;
             Dispatcher.BeginInvoke(() =>
             {
                 if (_settingsService.Current.TriggerMode == WinKeyTriggerMode.DirectOnSingleWinTap)
                 {
                     _mainWindow.TogglePopup();
                 }
-                else if (_mainWindow.IsVisible)
+                else if (popupWasVisible && _mainWindow.IsVisible)
                 {
                     _mainWindow.HidePopup();
                 }

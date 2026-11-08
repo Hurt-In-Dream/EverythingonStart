@@ -12,6 +12,18 @@ pwsh -NoProfile -File .\Tests\Test-PinyinSearch.ps1 -AppAssemblyDirectory .\bin\
 
 ## Win 键输入交接
 
+### 原生菜单到程序面板的视觉交接
+
+```powershell
+pwsh -NoProfile -File .\Tests\Test-PopupHandover.ps1 -AppAssemblyDirectory .\bin\x64\Release\net10.0-windows
+```
+
+执行实际交接控制器，验证布局就绪、前一帧合成后才转移焦点、重复帧/失效前台/超时取消，以及合成等待期间前台变化的竞态。
+冷进程使用与程序相同的离屏预热服务，等待内容渲染与连续帧并在 350ms 超时后清理；不把未预热的 WPF 渲染线程误当作已就绪。
+两扇自有、不激活的测试窗口验证真实 DWM 合成中覆盖面板先显示、原窗口随后隐藏；只采样自有窗口覆盖的像素，不保存桌面截图。
+通过监听每扇测试窗口的 `Activated` 验证不抢焦点，同时记录测试前后的前台 HWND；其他应用或用户自行切换前台不再被误判为测试窗激活。
+该测试不模拟系统开始菜单动画或物理键盘输入；后者仍需在真实开始菜单中人工检查。
+
 ```powershell
 pwsh -NoProfile -File .\Tests\Test-WinKeyHandover.ps1
 ```
@@ -69,6 +81,9 @@ pwsh -NoProfile -File .\Tests\Test-NativeBackdrop.ps1 -AppAssemblyDirectory .\bi
 仅在内存测量被这些合成窗口覆盖的 120×120 区域，不保存桌面图片；生产程序无采样或截图代码。
 测试不启动/替换正在运行的托盘实例，不修改用户设置、系统壁纸或 Wallpaper Engine 配置。
 这是 DWM 合成机制验证，不替代不同驱动、多显示器、Wallpaper Engine 暂停策略下的人工检查。
+
+另外以本机 95% 不透明度复现重复染色：原生 Accent 的额外染色标志与 WPF 遮罩叠加时，红/蓝背景响应几乎被遮住。
+对照同一自有合成背景验证去掉该标志后恢复实时响应，并保持设置对应的 242/255 遮罩 alpha 不变。
 
 ### 黑边 / 白边与圆角裁剪
 

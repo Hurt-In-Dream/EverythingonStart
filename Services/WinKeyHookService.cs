@@ -45,15 +45,23 @@ public sealed class WinKeyHookService : IDisposable
     private long _lastSingleWinReleaseTick;
     private long _handoverWindowUntilTick;
     private bool _inputHandoverPending;
+    private IntPtr _nativeHandoverWindow;
     private readonly HashSet<int> _interceptedKeyUps = [];
 
     public bool IsInputHandoverPending =>
         _inputHandoverPending && Environment.TickCount64 < _handoverWindowUntilTick;
 
+    public IntPtr NativeHandoverWindow => _nativeHandoverWindow;
+
+    public bool CanContinueNativeHandover() => IsInputHandoverPending &&
+        _nativeHandoverWindow != IntPtr.Zero && GetForegroundWindow() == _nativeHandoverWindow &&
+        IsStartMenuHostWindowCached(_nativeHandoverWindow);
+
     public void CompleteInputHandover()
     {
         _inputHandoverPending = false;
         _handoverWindowUntilTick = 0;
+        _nativeHandoverWindow = IntPtr.Zero;
     }
 
     public IntPtr LastAppBeforeWinKeyHwnd => _lastAppBeforeWinKeyHwnd;
@@ -190,14 +198,18 @@ public sealed class WinKeyHookService : IDisposable
 
                         if (ShouldInterceptStartMenuTyping(now) && TryMapPrintableKey(vk, out var typedChar))
                         {
+                            var nativeWindow = GetForegroundWindow();
+                            if (!IsStartMenuHostWindowCached(nativeWindow))
+                                return CallNextHookEx(_hookHandle, nCode, wParam, lParam);
                             _startMenuSessionArmed = false;
+                            _nativeHandoverWindow = nativeWindow;
                             _inputHandoverPending = true;
                             // 有界保护：窗口无法激活时不能无限接管其他应用的输入。
                             _handoverWindowUntilTick = now + 1500;
                             _interceptedKeyUps.Add(vk);
 
-                            // 保持当前前台为 StartMenuExperienceHost 时发送 Esc，使其立即收到按键并隐藏开始菜单
-                            DismissNativeStartMenu();
+                            // Keep the native menu visible until the replacement cover has rendered.
+                            // Focus transfer then dismisses it; never send a global Esc into the new popup.
                             AllowSetForegroundWindow(ASFW_ANY);
 
                             StartMenuTypingIntercepted?.Invoke(typedChar);

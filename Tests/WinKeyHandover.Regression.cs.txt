@@ -62,7 +62,8 @@ internal static class Program
             TestNative.Foreground = new(2);
             s.Key('B', delay: 100);
             Check("confirmed-start-menu-after-passthrough", s, "b", "a", "",
-                s.Pending && TestNative.SyntheticKeys.SequenceEqual(new[] { ((byte)0x1B, 0u), ((byte)0x1B, 2u) }));
+                s.Pending && TestNative.SyntheticKeys.Count == 0 &&
+                s.Hook.NativeHandoverWindow == new IntPtr(2) && s.Hook.CanContinueNativeHandover());
         }
         using (var s = new Scenario())
         {
@@ -237,7 +238,7 @@ internal static class Program
             Send(0x5B, up: true);
             TestNative.Foreground = new(2);
             Key('A', release: !holdFirstKey);
-            // Esc closing StartMenuExperienceHost returns focus to the previously open app.
+            // Simulate transient loss of foreground during the existing focus-retry scenarios.
             TestNative.Foreground = new(1);
         }
 

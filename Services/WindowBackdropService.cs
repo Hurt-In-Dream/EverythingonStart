@@ -15,19 +15,23 @@ public sealed class WindowBackdropService : IDisposable
     private readonly FrameworkElement? _shadow;
     private readonly AppSettingsService _settings;
     private readonly Func<IntPtr, bool, bool> _nativeApply;
+    private readonly bool _useDefaultNativeApi;
     private readonly Func<bool> _highContrastReader;
     private readonly AppThemeService? _theme;
     private HwndSource? _source;
     private bool _disposed;
     private bool _lastEnabled;
+    private bool _handoverCover;
+    private string _nativeDescription = "未应用";
     public bool IsApplied { get; private set; }
-    public string SourceDescription => IsApplied ? "实时 DWM/Accent 亚克力合成（无截图、无本地预览）" : "原有主题背景（关闭或系统不可用）";
+    public string SourceDescription => IsApplied ? $"实时 {_nativeDescription} 背景模糊（无截图、无本地预览）" : $"原有主题背景（关闭或系统不可用：{_nativeDescription}）";
 
     public WindowBackdropService(Window window, Border surface, AppSettingsService settings,
         FrameworkElement? shadow = null, Func<IntPtr, bool, bool>? nativeApply = null, Func<bool>? highContrastReader = null)
     {
         _window = window; _surface = surface; _settings = settings; _shadow = shadow;
         _nativeApply = nativeApply ?? ApplyNativeBackdrop;
+        _useDefaultNativeApi = nativeApply == null;
         _highContrastReader = highContrastReader ?? (() => SystemParameters.HighContrast);
         _theme = Application.Current?.Resources["AppThemeService"] as AppThemeService;
         if (_theme != null) _theme.ThemeChanged += OnThemeChanged;
@@ -64,19 +68,35 @@ public sealed class WindowBackdropService : IDisposable
         bool enabled = _settings.Current.EnableGaussianBlur && !_highContrastReader() && !_window.AllowsTransparency;
         if (_source?.CompositionTarget != null)
             _source.CompositionTarget.BackgroundColor = Colors.Transparent;
-        bool applied = hwnd != IntPtr.Zero && _nativeApply(hwnd, enabled);
+        bool applied = hwnd != IntPtr.Zero && (_useDefaultNativeApi
+            ? ApplyNativeBackdropCore(hwnd, enabled, out _nativeDescription)
+            : _nativeApply(hwnd, enabled));
         IsApplied = enabled && applied;
         _lastEnabled = enabled;
+        UpdateSurface();
+        UpdateWindowRegion();
+    }
+
+    public void SetHandoverCover(bool enabled)
+    {
+        _window.Dispatcher.VerifyAccess();
+        if (_disposed || _handoverCover == enabled) return;
+        _handoverCover = enabled;
+        UpdateSurface();
+    }
+
+    private void UpdateSurface()
+    {
         if (_shadow != null) _shadow.Visibility = IsApplied ? Visibility.Collapsed : Visibility.Visible;
         string key = _window is MainWindow ? "Theme.SearchBackgroundBrush" : "Theme.WindowBackgroundBrush";
-        if (IsApplied && Application.Current?.TryFindResource(key) is SolidColorBrush brush)
+        if ((IsApplied || _handoverCover) && Application.Current?.TryFindResource(key) is SolidColorBrush brush)
         {
             var color = brush.Color;
-            color.A = (byte)Math.Round(Math.Clamp(_settings.Current.WindowOpacityPercent, 75, 100) * 255 / 100);
+            color.A = _handoverCover ? (byte)255 :
+                (byte)Math.Round(Math.Clamp(_settings.Current.WindowOpacityPercent, 75, 100) * 255 / 100);
             var tint = new SolidColorBrush(color); tint.Freeze(); _surface.Background = tint;
         }
         else _surface.SetResourceReference(Border.BackgroundProperty, key);
-        UpdateWindowRegion();
     }
 
     public void PrepareForShow() => ApplyCurrentSettings();
@@ -140,7 +160,24 @@ public sealed class WindowBackdropService : IDisposable
     private void OnClosed(object? sender, EventArgs e) => Dispose();
 
     public static bool ApplyNativeBackdrop(IntPtr hwnd, bool enabled)
+        => ApplyNativeBackdropCore(hwnd, enabled, out _);
+
+    // The popup owns its WPF animation. A second native HWND show/fade transition can
+    // leave even an opaque, rendered cover translucent when focus leaves Start.
+    public static bool DisableNativeTransitions(IntPtr hwnd)
     {
+        if (hwnd == IntPtr.Zero) return false;
+        try
+        {
+            int disabled = 1; // DWMWA_TRANSITIONS_FORCEDISABLED, per-window only.
+            return DwmSetWindowAttribute(hwnd, 3, ref disabled, sizeof(int)) >= 0;
+        }
+        catch (Exception ex) when (ex is EntryPointNotFoundException or DllNotFoundException) { return false; }
+    }
+
+    private static bool ApplyNativeBackdropCore(IntPtr hwnd, bool enabled, out string description)
+    {
+        description = "DWM 不可用";
         if (hwnd == IntPtr.Zero) return false;
         try
         {
@@ -155,18 +192,28 @@ public sealed class WindowBackdropService : IDisposable
             DwmSetWindowAttribute(hwnd, 34, ref borderColor, sizeof(int));
             int none = 1; DwmSetWindowAttribute(hwnd, 38, ref none, sizeof(int));
             // Accent bit 4 makes the compositor respect the GDI region (also documented by DWMBlurGlass).
-            var accent = new ACCENT_POLICY { State = enabled ? 4 : 0, Flags = 2 | (1 << 4), Color = enabled ? 0x01000000u : 0u };
+            // Flag 2 adds a second, near-opaque native tint. With the default 95% WPF
+            // tint this almost completely hides the live background. Keep only region clipping.
+            var accent = new ACCENT_POLICY { State = enabled ? 4 : 0, Flags = enabled ? (1 << 4) : 0,
+                Color = enabled ? 0x01000000u : 0u };
             IntPtr memory = Marshal.AllocHGlobal(Marshal.SizeOf<ACCENT_POLICY>());
             try
             {
                 Marshal.StructureToPtr(accent, memory, false);
                 var data = new WINDOWCOMPOSITIONATTRIBDATA { Attribute = 19, Data = memory, Size = Marshal.SizeOf<ACCENT_POLICY>() };
-                if (SetWindowCompositionAttribute(hwnd, ref data)) return true;
+                if (SetWindowCompositionAttribute(hwnd, ref data))
+                {
+                    description = enabled ? "Accent Acrylic（单层染色）" : "关闭";
+                    return true;
+                }
+                description = $"Accent 失败 ({Marshal.GetLastWin32Error()})";
             }
             finally { Marshal.FreeHGlobal(memory); }
             // Public SystemBackdrop fallback, as used by DWMBlurGlass's DWMAPI path on Windows 11 22H2+.
             int material = enabled ? 3 : 1;
-            return DwmSetWindowAttribute(hwnd, 38, ref material, sizeof(int)) >= 0;
+            int result = DwmSetWindowAttribute(hwnd, 38, ref material, sizeof(int));
+            description = result >= 0 ? "SystemBackdrop Acrylic" : $"{description}; SystemBackdrop HRESULT=0x{result:X8}";
+            return result >= 0;
         }
         catch (Exception ex) when (ex is EntryPointNotFoundException or DllNotFoundException) { return false; }
     }
@@ -199,5 +246,5 @@ public sealed class WindowBackdropService : IDisposable
     [DllImport("dwmapi.dll")] private static extern int DwmIsCompositionEnabled([MarshalAs(UnmanagedType.Bool)] out bool enabled);
     [DllImport("dwmapi.dll")] private static extern int DwmExtendFrameIntoClientArea(IntPtr hwnd, ref MARGINS margins);
     [DllImport("dwmapi.dll")] private static extern int DwmSetWindowAttribute(IntPtr hwnd, int attribute, ref int value, int size);
-    [DllImport("user32.dll")] private static extern bool SetWindowCompositionAttribute(IntPtr hwnd, ref WINDOWCOMPOSITIONATTRIBDATA data);
+    [DllImport("user32.dll", SetLastError = true)] private static extern bool SetWindowCompositionAttribute(IntPtr hwnd, ref WINDOWCOMPOSITIONATTRIBDATA data);
 }
