@@ -1,0 +1,86 @@
+using System.IO;
+using System.Reflection;
+using System.Runtime.CompilerServices;
+using System.Text.Json;
+using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Media;
+using EverythingonStart;
+using EverythingonStart.Models;
+using EverythingonStart.Services;
+
+internal static class Program
+{
+    private const BindingFlags Private = BindingFlags.Instance | BindingFlags.NonPublic;
+    private static int checks, failures;
+    [STAThread] private static int Main(string[] args)
+    {
+        var app = new Application { ShutdownMode = ShutdownMode.OnExplicitShutdown };
+        var settings = (AppSettingsService)RuntimeHelpers.GetUninitializedObject(typeof(AppSettingsService));
+        typeof(AppSettingsService).GetProperty("Current")!.SetValue(settings, new AppSettings());
+        string settingsFile = Path.Combine(args[1], "isolated-opacity-settings.json");
+        typeof(AppSettingsService).GetField("_settingsFilePath", Private)!.SetValue(settings, settingsFile);
+        using var everything = new EverythingSearchService(settings.Current.EverythingInstanceName, settings);
+        var bounds = new StartMenuBoundsService(settings);
+        var main = new MainWindow(settings, everything, new StartMenuIndexService(), new WebSuggestionService(settings),
+            new IconCacheService(), new ActionExecutorService(everything, settings), bounds)
+            { Left = -10000, Top = -10000, ShowActivated = false };
+        SettingsWindow Options() => new(settings, everything, bounds, () => { }, 3)
+            { Left = -10000, Top = -10000, WindowStartupLocation = WindowStartupLocation.Manual, ShowActivated = false, ShowInTaskbar = false };
+        var options = Options();
+        main.Show(); options.Show(); main.UpdateLayout(); options.UpdateLayout();
+        var theme = AppThemeService.GetOrCreate(settings);
+        Border mainSurface = (Border)main.FindName("RootCardBorder");
+        byte Alpha(Border surface) => ((SolidColorBrush)surface.Background).Color.A;
+        byte OptionsAlpha(SettingsWindow window) => Alpha((Border)window.FindName("SettingsRootBorder"));
+        var slider = (Slider)options.FindName("SldWindowOpacity");
+        Check("opacity-range-10-to-100", slider.Minimum == 10 && slider.Maximum == 100);
+        slider.Value = 50;
+        Console.WriteLine($"PREVIEW: slider={slider.Value}; saved={settings.Current.WindowOpacityPercent}; main-alpha={Alpha(mainSurface)}; settings-alpha={OptionsAlpha(options)}; blur={settings.Current.EnableGaussianBlur}");
+        Check("drag-previews-main-background-with-blur-off", Alpha(mainSurface) == 128);
+        Check("drag-previews-settings-background-with-blur-off", OptionsAlpha(options) == 128);
+        Check("preview-does-not-mutate-saved-model", settings.Current.WindowOpacityPercent == 95);
+        Check("foreground-controls-not-faded", main.Opacity == 1 && options.Opacity == 1 && ((TextBox)main.FindName("SearchTextBox")).Opacity == 1);
+        settings.Save();
+        Check("unrelated-save-does-not-persist-preview", JsonSerializer.Deserialize<AppSettings>(File.ReadAllText(settingsFile))!.WindowOpacityPercent == 95);
+        options.Close();
+        Check("cancel-restores-configured-background", settings.Current.WindowOpacityPercent == 95 && Alpha(mainSurface) == 242);
+        options = Options(); options.Show(); options.UpdateLayout();
+        slider = (Slider)options.FindName("SldWindowOpacity"); slider.Value = 50;
+        var apply = typeof(SettingsWindow).GetMethod("OnApplyWindowOpacityClick", Private);
+        Check("apply-opacity-without-autostart-side-effects-supported", apply != null);
+        apply?.Invoke(options, [options, new RoutedEventArgs()]);
+        Check("apply-persists-selected-opacity", settings.Current.WindowOpacityPercent == 50 &&
+            JsonSerializer.Deserialize<AppSettings>(File.ReadAllText(settingsFile))!.WindowOpacityPercent == 50);
+        slider.Value = 35; options.Close();
+        Check("cancel-next-preview-restores-last-applied-value", settings.Current.WindowOpacityPercent == 50 && Alpha(mainSurface) == 128);
+        var mainBackdrop = typeof(MainWindow).GetField("_backdropService", Private)!.GetValue(main)!;
+        foreach (int percent in new[] { 10, 50, 100 })
+        {
+            settings.Current.WindowOpacityPercent = percent;
+            theme.ApplyCurrentSettings();
+            typeof(WindowBackdropService).GetMethod("ApplyCurrentSettings")!.Invoke(mainBackdrop, null);
+            Check("background-alpha-" + percent, Alpha(mainSurface) == (byte)Math.Round(percent * 255 / 100.0));
+        }
+        settings.Current.EnableGaussianBlur = true;
+        settings.Current.WindowOpacityPercent = 50;
+        theme.ApplyCurrentSettings();
+        typeof(WindowBackdropService).GetMethod("ApplyCurrentSettings")!.Invoke(mainBackdrop, null);
+        Check("opacity-works-with-native-blur", Alpha(mainSurface) == 128);
+        Check("old-default-remains-95-percent", new AppSettings().WindowOpacityPercent == 95);
+        string source = File.ReadAllText(Path.Combine(args[0], "MainWindow.xaml.cs"));
+        int closeRequest = source.IndexOf("TryDismissNativeHandoverMenu()", StringComparison.Ordinal);
+        int activate = source.IndexOf("ActivatePopupAndFocus(fromStartMenuTyping: true)", StringComparison.Ordinal);
+        Check("captured-menu-close-before-focus-transfer", closeRequest >= 0 && activate > closeRequest);
+        Check("failed-close-does-not-activate-popup", closeRequest >= 0 && source[closeRequest..activate].Contains("HidePopup();"));
+        Console.WriteLine($"MENU-CLOSE: explicit-captured-request={closeRequest >= 0}; before-focus={closeRequest >= 0 && activate > closeRequest}");
+        main.Close(); (app.Resources["AppThemeService"] as IDisposable)?.Dispose(); app.Shutdown();
+        Console.WriteLine($"Summary: {checks - failures}/{checks} passed");
+        return failures == 0 ? 0 : 1;
+    }
+    private static void Check(string name, bool passed)
+    {
+        checks++; if (!passed) failures++;
+        Console.WriteLine($"{(passed ? "PASS" : "FAIL")} {name}");
+    }
+}

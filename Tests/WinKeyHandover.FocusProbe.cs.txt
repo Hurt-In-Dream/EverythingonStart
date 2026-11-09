@@ -10,6 +10,9 @@ internal sealed class FocusProbe
     private long _inputHandoverFocusReadySinceTick;
     #pragma warning restore CS0169
     private readonly List<IntPtr> _demotedFullscreenWindows = [];
+    private static readonly IntPtr HWND_TOPMOST = new(-1);
+    private const uint SWP_NOSIZE = 1, SWP_NOMOVE = 2, SWP_NOACTIVATE = 0x10;
+    private static bool SetWindowPos(IntPtr hwnd, IntPtr after, int x, int y, int width, int height, uint flags) => true;
     public bool IsVisible = true;
     public bool CanAcquireFocus;
     public FakeTextBox SearchTextBox { get; }

@@ -1071,10 +1071,15 @@
                                             <ColumnDefinition Width="*" />
                                             <ColumnDefinition Width="56" />
                                         </Grid.ColumnDefinitions>
-                                        <TextBlock Grid.Column="0" Text="主面板背景不透明度：" Foreground="{DynamicResource Theme.TextSecondaryBrush}" VerticalAlignment="Center" />
-                                        <Slider x:Name="SldWindowOpacity" Grid.Column="1" Minimum="75" Maximum="100" TickFrequency="1" IsSnapToTickEnabled="True" VerticalAlignment="Center" ValueChanged="OnSliderValueChanged" />
+                                        <TextBlock Grid.Column="0" Text="窗口背景不透明度：" Foreground="{DynamicResource Theme.TextSecondaryBrush}" VerticalAlignment="Center" />
+                                        <Slider x:Name="SldWindowOpacity" Grid.Column="1" Minimum="10" Maximum="100" TickFrequency="1" IsSnapToTickEnabled="True" VerticalAlignment="Center" ValueChanged="OnSliderValueChanged" ToolTip="10%–100%，主面板与设置窗口实时预览，文字保持清晰" />
                                         <TextBlock x:Name="TxtWindowOpacityVal" Grid.Column="2" Text="95%" Foreground="{DynamicResource Theme.AccentTextBrush}" HorizontalAlignment="Right" VerticalAlignment="Center" />
                                     </Grid>
+
+                                    <TextBlock Text="拖动即时预览；应用或保存后记住设置，取消或关闭则恢复。背景模糊关闭时也可调整，文字与按钮不跟随变淡。"
+                                               Foreground="{DynamicResource Theme.TextMutedBrush}" FontSize="11" TextWrapping="Wrap" Margin="0,0,0,8" />
+                                    <Button Content="应用不透明度" Style="{StaticResource DarkActionButtonStyle}" HorizontalAlignment="Left"
+                                            Click="OnApplyWindowOpacityClick" Margin="0,0,0,8" />
 
                                     <CheckBox x:Name="ChkEnablePopupAnim" Content="启用搜索面板弹出时的平滑上浮与缩放缓动动画" />
                                 </StackPanel>

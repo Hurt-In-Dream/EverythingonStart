@@ -9,6 +9,7 @@ public static class TestNative
     public static bool ControlDown;
     public static bool TextFocus;
     public static readonly List<(byte Key, uint Flags)> SyntheticKeys = new();
+    public static bool MenuCloaked;
 }
 
 internal static class Program
@@ -18,6 +19,54 @@ internal static class Program
 
     private static int Main()
     {
+        var dismiss = typeof(WinKeyHookService).GetMethod("TryDismissNativeHandoverMenu");
+        var closed = typeof(WinKeyHookService).GetMethod("HasNativeHandoverMenuClosed");
+        if (dismiss == null || closed == null)
+        {
+            _total++; _failed++;
+            Console.WriteLine("FAIL explicit-captured-menu-dismissal: missing; WA_INACTIVE-only handover");
+        }
+        else
+        {
+            var escape = new[] { ((byte)0x1B, 0u), ((byte)0x1B, 2u) };
+            using (var s = new Scenario())
+            {
+                s.Begin(); TestNative.Foreground = new(2);
+                bool requested = (bool)dismiss.Invoke(s.Hook, null)!;
+                Check("Escape-injected-while-verified-menu-is-foreground", s, "a", "", "", requested &&
+                    TestNative.SyntheticKeys.SequenceEqual(escape) && s.Pending);
+            }
+            using (var s = new Scenario())
+            {
+                s.Begin(); TestNative.Foreground = new(3);
+                bool requested = (bool)dismiss.Invoke(s.Hook, null)!;
+                Check("never-Escape-new-search-popup", s, "a", "", "", !requested && TestNative.SyntheticKeys.Count == 0);
+            }
+            using (var s = new Scenario())
+            {
+                s.Begin(); TestNative.Foreground = new(99);
+                bool requested = (bool)dismiss.Invoke(s.Hook, null)!;
+                Check("foreign-foreground-never-receives-menu-close", s, "a", "", "", !requested && TestNative.SyntheticKeys.Count == 0);
+            }
+            using (var s = new Scenario())
+            {
+                s.Begin(); s.Complete(); TestNative.Foreground = new(2);
+                bool requested = (bool)dismiss.Invoke(s.Hook, null)!;
+                Check("expired-session-no-menu-close", s, "a", "", "", !requested && TestNative.SyntheticKeys.Count == 0);
+            }
+            using (var s = new Scenario())
+            {
+                s.Begin(); TestNative.Foreground = new(2);
+                dismiss.Invoke(s.Hook, null);
+                bool openWhileForeground = !(bool)closed.Invoke(s.Hook, null)!;
+                TestNative.MenuCloaked = true;
+                bool closedWhenCloaked = (bool)closed.Invoke(s.Hook, null)!;
+                TestNative.MenuCloaked = false; TestNative.Foreground = new(1);
+                bool closedWhenForegroundLeft = (bool)closed.Invoke(s.Hook, null)!;
+                Check("popup-activation-waits-for-menu-close", s, "a", "", "",
+                    openWhileForeground && closedWhenCloaked && closedWhenForegroundLeft);
+            }
+        }
         // A Win tap is not proof that the native Start menu actually opened.
         // These tests keep the foreground on an ordinary/game window throughout.
         foreach (int delay in new[] { 0, 100, 400, 850, 900 })
@@ -226,6 +275,7 @@ internal static class Program
             TestNative.ControlDown = false;
             TestNative.TextFocus = false;
             TestNative.SyntheticKeys.Clear();
+            TestNative.MenuCloaked = false;
             _hook = new WinKeyHookService(new AppSettingsService(), new StartMenuBoundsService());
             _hook.SetMainWindowHandle(new(3));
             _hook.StartMenuTypingIntercepted += text => Search += text;

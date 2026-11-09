@@ -65,6 +65,17 @@ public sealed class AppThemeService : IDisposable
             SystemEvents.UserPreferenceChanged += OnUserPreferenceChanged;
     }
 
+    private double? _windowOpacityPreview;
+    public double? WindowOpacityPreviewPercent => _windowOpacityPreview;
+    public double EffectiveWindowOpacityPercent => Math.Clamp(_windowOpacityPreview ?? _settings.Current.WindowOpacityPercent, 10, 100);
+
+    public void PreviewWindowOpacity(double? percent)
+    {
+        _dispatcher.VerifyAccess();
+        _windowOpacityPreview = percent;
+        ApplyCurrentSettings();
+    }
+
     public void ApplyCurrentSettings()
     {
         _dispatcher.VerifyAccess();
@@ -101,7 +112,7 @@ public sealed class AppThemeService : IDisposable
         }
 
         Color search = colors["Theme.SearchShadowBrush"];
-        byte alpha = (byte)Math.Round(Math.Clamp(_settings.Current.WindowOpacityPercent, 75, 100) * 255 / 100);
+        byte alpha = (byte)Math.Round(EffectiveWindowOpacityPercent * 255 / 100);
         Set("SearchBackground", Color.FromArgb(alpha, search.R, search.G, search.B));
         foreach (byte opacity in new byte[] { 0x14, 0x1A, 0x1C, 0x1E, 0x1F, 0x22, 0x24, 0x26, 0x28, 0x2A, 0x2B, 0x2E, 0x33, 0x38, 0x44 })
         {

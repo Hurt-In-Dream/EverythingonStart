@@ -35,6 +35,10 @@ public partial class SettingsWindow : Window
         _themeService.RegisterWindow(this);
         _backdropService = new WindowBackdropService(this, SettingsRootBorder, _settingsService);
         LoadFromSettings();
+        Closed += (_, _) =>
+        {
+            _themeService.PreviewWindowOpacity(null);
+        };
 
         switch (initialTabIndex)
         {
@@ -112,7 +116,7 @@ public partial class SettingsWindow : Window
         SldManualScale.IsEnabled = cur.AutoScaleToStartMenu != true;
         TxtCurrentBoundsSource.Text = $"当前尺寸来源：{_boundsService.LastPlacementSource}";
 
-        SldWindowOpacity.Value = Math.Clamp(cur.WindowOpacityPercent, 75, 100);
+        SldWindowOpacity.Value = Math.Clamp(cur.WindowOpacityPercent, 10, 100);
         TxtWindowOpacityVal.Text = $"{(int)SldWindowOpacity.Value}%";
         ChkEnablePopupAnim.IsChecked = cur.EnablePopupAnimation;
         CmbThemeMode.SelectedIndex = Enum.IsDefined(cur.ThemeMode) ? (int)cur.ThemeMode : (int)AppThemeMode.Dark;
@@ -316,7 +320,13 @@ public partial class SettingsWindow : Window
         else if (ReferenceEquals(sender, SldManualScale) && TxtManualScaleVal != null)
             TxtManualScaleVal.Text = $"{(int)SldManualScale.Value}%";
         else if (ReferenceEquals(sender, SldWindowOpacity) && TxtWindowOpacityVal != null)
+        {
             TxtWindowOpacityVal.Text = $"{(int)SldWindowOpacity.Value}%";
+            if (!_isLoading)
+            {
+                _themeService.PreviewWindowOpacity(Math.Round(SldWindowOpacity.Value));
+            }
+        }
         else if (ReferenceEquals(sender, SldGaussianBlurRadius) && TxtGaussianBlurRadiusVal != null)
             TxtGaussianBlurRadiusVal.Text = $"{(int)SldGaussianBlurRadius.Value}";
     }
@@ -447,6 +457,14 @@ public partial class SettingsWindow : Window
         _themeService.ApplyCurrentSettings();
         _onSettingsApplied();
         Close();
+    }
+
+    private void OnApplyWindowOpacityClick(object sender, RoutedEventArgs e)
+    {
+        _settingsService.Current.WindowOpacityPercent = Math.Round(SldWindowOpacity.Value);
+        _settingsService.Save();
+        _themeService.PreviewWindowOpacity(null);
+        HeaderStatusText.Text = $"已应用背景不透明度：{(int)SldWindowOpacity.Value}%";
     }
 
     private void ApplyThemeSelections()

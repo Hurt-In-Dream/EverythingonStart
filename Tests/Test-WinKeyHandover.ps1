@@ -45,9 +45,11 @@ $replacements = @{
     'private static extern IntPtr CallNextHookEx(IntPtr hhk, int nCode, IntPtr wParam, IntPtr lParam);' = 'private static IntPtr CallNextHookEx(IntPtr hhk, int nCode, IntPtr wParam, IntPtr lParam) => new(-99);'
     'private static extern void keybd_event(byte bVk, byte bScan, uint dwFlags, UIntPtr dwExtraInfo);' = 'private static void keybd_event(byte bVk, byte bScan, uint dwFlags, UIntPtr dwExtraInfo) { TestNative.SyntheticKeys.Add((bVk, dwFlags)); }'
     'private static extern bool AllowSetForegroundWindow(int dwProcessId);' = 'private static bool AllowSetForegroundWindow(int dwProcessId) => true;'
+    'private static extern int DwmGetWindowAttribute(IntPtr hwnd, int attribute, out int value, int size);' = 'private static int DwmGetWindowAttribute(IntPtr hwnd, int attribute, out int value, int size) { value = TestNative.MenuCloaked ? 2 : 0; return 0; }'
 }
 foreach ($signature in $replacements.Keys) {
     $pattern = '\[DllImport\([^\r\n]+\)\]\s+' + [regex]::Escape($signature)
+    if ($signature.Contains('DwmGetWindowAttribute') -and !$source.Contains($signature)) { continue }
     if ([regex]::Matches($source, $pattern).Count -ne 1) {
         throw "Expected exactly one platform declaration: $signature"
     }

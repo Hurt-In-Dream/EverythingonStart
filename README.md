@@ -6,12 +6,12 @@
 
 ## 下载与快速开始
 
-从 [v1.5.1 Release](https://github.com/Hurt-In-Dream/EverythingonStart/releases/tag/v1.5.1) 选择 Windows x64 版本：
+从 [v1.5.2 Release](https://github.com/Hurt-In-Dream/EverythingonStart/releases/tag/v1.5.2) 选择 Windows x64 版本：
 
 | 版本 | 下载 | 使用方式 |
 | --- | --- | --- |
-| 安装版 | [Setup-x64.exe](https://github.com/Hurt-In-Dream/EverythingonStart/releases/download/v1.5.1/EverythingonStart-v1.5.1-Setup-x64.exe) | 按用户安装，无需管理员权限，默认安装到 `%LOCALAPPDATA%\Programs\EverythingonStart` |
-| 绿色单文件版 | [Portable-x64.exe](https://github.com/Hurt-In-Dream/EverythingonStart/releases/download/v1.5.1/EverythingonStart-v1.5.1-Portable-x64.exe) | 下载一个 EXE 即可运行，无需旁置 DLL 或安装 .NET |
+| 安装版 | [Setup-x64.exe](https://github.com/Hurt-In-Dream/EverythingonStart/releases/download/v1.5.2/EverythingonStart-v1.5.2-Setup-x64.exe) | 按用户安装，无需管理员权限，默认安装到 `%LOCALAPPDATA%\Programs\EverythingonStart` |
+| 绿色单文件版 | [Portable-x64.exe](https://github.com/Hurt-In-Dream/EverythingonStart/releases/download/v1.5.2/EverythingonStart-v1.5.2-Portable-x64.exe) | 下载一个 EXE 即可运行，无需旁置 DLL 或安装 .NET |
 
 单文件版内置 .NET 与 Everything SDK，首次运行会将原生运行库解压到 .NET 的用户临时缓存；设置仍保存在用户目录，不是零磁盘写入模式。
 推荐 Windows 11 x64。文件检索需要安装并在后台运行 [Everything](https://www.voidtools.com/downloads/)。
@@ -33,6 +33,11 @@
 - 启动时完成有界的离屏渲染预热，不再立即 `Show` 后 `Hide`；程序窗口禁用额外的系统显示过渡，单按 Win 的 WPF 入场动画保留。
 - 首帧交接先等待 .NET 10 WPF 渲染通道完成，再同步 DWM；运行时内部接口不可用时取消交接，不提前收起原生菜单。此兼容桥接集中在 `PopupWindowPreparationService`，升级运行时需重新运行交接测试。
 - 本机 95% 不透明度下的模糊不可见问题：移除 Accent 的重复染色标志，保留原有 WPF 遮罩不透明度及系统透明效果设置。
+
+### v1.5.2 开始菜单收起与窗口不透明度
+
+- 布局/渲染就绪后，仅在已捕获的原生开始菜单仍为前台时注入一次 Escape 将其收起，等待菜单离开前台（实测约 190 ms，最长 600 ms）后再激活程序并置顶；系统开始菜单会忽略定向消息/失焦通知并拒绝前台切换，因此此前程序会被压在菜单后面。
+- 窗口背景不透明度可调整为 10%–100%，主面板与设置窗口实时预览，模糊关闭时同样有效。使用“应用不透明度”单独保存，或保存全部设置；取消未应用的预览会恢复已保存值，文字与按钮不随背景变淡。
 
 ### v1.4.2 输入干扰修复（已包含）
 

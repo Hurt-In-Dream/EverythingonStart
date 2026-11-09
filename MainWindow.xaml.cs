@@ -65,6 +65,7 @@ public partial class MainWindow : Window
     private EventHandler? _popupHandoverRendering;
     private DispatcherTimer? _popupHandoverDeadline;
     private DispatcherTimer? _popupCoverRelease;
+    private DispatcherTimer? _nativeMenuCloseWait;
     private bool _isShowingDefaultLanding;
     private long _searchVersion;
     private int _taskbarKeepTopTicksRemaining;
@@ -343,19 +344,12 @@ public partial class MainWindow : Window
             () =>
             {
                 StopPopupHandoverWatch();
-                ActivatePopupAndFocus(fromStartMenuTyping: true);
-                // Keep the old menu's closing animation behind an opaque owned cover.
-                _popupCoverRelease = new DispatcherTimer(DispatcherPriority.Background)
+                if (_winKeyHookService?.TryDismissNativeHandoverMenu() != true)
                 {
-                    Interval = TimeSpan.FromMilliseconds(120)
-                };
-                _popupCoverRelease.Tick += (_, _) =>
-                {
-                    _popupCoverRelease?.Stop();
-                    _popupCoverRelease = null;
-                    _backdropService.SetHandoverCover(false);
-                };
-                _popupCoverRelease.Start();
+                    HidePopup();
+                    return;
+                }
+                ActivateAfterNativeMenuCloses();
             },
             () =>
             {
@@ -394,6 +388,44 @@ public partial class MainWindow : Window
         _popupHandoverDeadline.Start();
     }
 
+    private void ActivateAfterNativeMenuCloses()
+    {
+        // The menu refuses foreground changes while it is open. Activate only after it has
+        // consumed the Escape and left the foreground (measured ~190 ms), bounded by a deadline.
+        long deadline = Environment.TickCount64 + 600;
+        _nativeMenuCloseWait = new DispatcherTimer(DispatcherPriority.Input)
+        {
+            Interval = TimeSpan.FromMilliseconds(10)
+        };
+        _nativeMenuCloseWait.Tick += (_, _) =>
+        {
+            if (IsVisible && _winKeyHookService?.HasNativeHandoverMenuClosed() == false &&
+                Environment.TickCount64 < deadline)
+                return;
+            _nativeMenuCloseWait?.Stop();
+            _nativeMenuCloseWait = null;
+            if (!IsVisible)
+                return;
+            _ignoreEscapeUntilTick = Math.Max(_ignoreEscapeUntilTick, Environment.TickCount64 + 120);
+            ActivatePopupAndFocus(fromStartMenuTyping: true);
+            SetWindowPos(new WindowInteropHelper(this).Handle, HWND_TOPMOST, 0, 0, 0, 0,
+                SWP_NOSIZE | SWP_NOMOVE | SWP_NOACTIVATE | SWP_SHOWWINDOW);
+            // Keep the old menu's closing animation behind an opaque owned cover.
+            _popupCoverRelease = new DispatcherTimer(DispatcherPriority.Background)
+            {
+                Interval = TimeSpan.FromMilliseconds(120)
+            };
+            _popupCoverRelease.Tick += (_, _) =>
+            {
+                _popupCoverRelease?.Stop();
+                _popupCoverRelease = null;
+                _backdropService.SetHandoverCover(false);
+            };
+            _popupCoverRelease.Start();
+        };
+        _nativeMenuCloseWait.Start();
+    }
+
     private void StopPopupHandoverWatch()
     {
         if (_popupHandoverRendering != null)
@@ -409,6 +441,8 @@ public partial class MainWindow : Window
         var pending = _popupHandover;
         StopPopupHandoverWatch();
         pending?.Cancel();
+        _nativeMenuCloseWait?.Stop();
+        _nativeMenuCloseWait = null;
         _popupCoverRelease?.Stop();
         _popupCoverRelease = null;
         _backdropService.SetHandoverCover(false);
@@ -462,6 +496,9 @@ public partial class MainWindow : Window
         var hwnd = new WindowInteropHelper(this).Handle;
         if (GetForegroundWindow() == hwnd && SearchTextBox.IsKeyboardFocused)
         {
+            // The launcher can finish its close animation after initial activation.
+            // Reassert our own z-order during the existing bounded focus handshake.
+            SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOSIZE | SWP_NOMOVE | SWP_NOACTIVATE);
             long now = Environment.TickCount64;
             if (_inputHandoverFocusReadySinceTick == 0)
                 _inputHandoverFocusReadySinceTick = now;

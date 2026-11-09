@@ -87,13 +87,14 @@ public sealed class WindowBackdropService : IDisposable
 
     private void UpdateSurface()
     {
+        if (_disposed) return;
         if (_shadow != null) _shadow.Visibility = IsApplied ? Visibility.Collapsed : Visibility.Visible;
         string key = _window is MainWindow ? "Theme.SearchBackgroundBrush" : "Theme.WindowBackgroundBrush";
-        if ((IsApplied || _handoverCover) && Application.Current?.TryFindResource(key) is SolidColorBrush brush)
+        if (Application.Current?.TryFindResource(key) is SolidColorBrush brush)
         {
             var color = brush.Color;
-            color.A = _handoverCover ? (byte)255 :
-                (byte)Math.Round(Math.Clamp(_settings.Current.WindowOpacityPercent, 75, 100) * 255 / 100);
+            color.A = _handoverCover || _highContrastReader() ? (byte)255 :
+                (byte)Math.Round(Math.Clamp(_theme?.WindowOpacityPreviewPercent ?? _settings.Current.WindowOpacityPercent, 10, 100) * 255 / 100);
             var tint = new SolidColorBrush(color); tint.Freeze(); _surface.Background = tint;
         }
         else _surface.SetResourceReference(Border.BackgroundProperty, key);
@@ -152,7 +153,7 @@ public sealed class WindowBackdropService : IDisposable
             _window.Dispatcher.InvokeAsync(ApplyCurrentSettings);
         return IntPtr.Zero;
     }
-    private void OnThemeChanged(object? sender, EventArgs e) => ApplyCurrentSettings();
+    private void OnThemeChanged(object? sender, EventArgs e) => UpdateSurface();
     private void OnSystemParameterChanged(object? sender, PropertyChangedEventArgs e)
     {
         if (e.PropertyName == nameof(SystemParameters.HighContrast)) _window.Dispatcher.InvokeAsync(ApplyCurrentSettings);

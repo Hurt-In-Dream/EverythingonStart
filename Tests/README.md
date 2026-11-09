@@ -12,6 +12,16 @@ pwsh -NoProfile -File .\Tests\Test-PinyinSearch.ps1 -AppAssemblyDirectory .\bin\
 
 ## Win 键输入交接
 
+### 菜单关闭请求与不透明度预览
+
+```powershell
+pwsh -NoProfile -File .\Tests\Test-MenuOpacity.ps1 -AppAssemblyDirectory .\bin\x64\Release\net10.0-windows
+```
+
+验证 10%/50%/100% 背景 alpha、主面板和设置窗口实时预览、模糊开关、预览不污染配置、应用持久化与取消恢复。
+Win 键回归另外执行真实关闭请求方法的 OS 替身，检查 Escape 仅在已验证的菜单为前台时注入、前台为新搜索框/其他应用/会话过期时不注入，以及菜单收起（前台离开或被 DWM 隐藏）前不激活程序。
+普通自有窗口不能模拟 Windows 11 原生菜单的特殊层级；真实菜单关闭和最终置顶仍须在本机测试，不以消息投递成功代替菜单已关闭。
+
 ### 原生菜单到程序面板的视觉交接
 
 ```powershell

@@ -11,7 +11,7 @@
     <PlatformTarget>x64</PlatformTarget>
     <AssemblyName>EverythingonStart</AssemblyName>
     <RootNamespace>EverythingonStart</RootNamespace>
-    <Version>1.5.1</Version>
+    <Version>1.5.2</Version>
     <ApplicationIcon>Assets\AppIcon.ico</ApplicationIcon>
     <RestoreAdditionalProjectSources>https://api.nuget.org/v3/index.json</RestoreAdditionalProjectSources>
     <Description>Windows 11 开始菜单搜索极速复刻启动器，直连 Everything 实时索引并支持自适应缩放、自定义筛选器与双模式 Win 键触发。</Description>

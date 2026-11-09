@@ -27,6 +27,7 @@ public sealed class WinKeyHookService : IDisposable
     private const uint KEYEVENTF_KEYUP = 0x0002;
     private const uint PROCESS_QUERY_LIMITED_INFORMATION = 0x1000;
     private const int ASFW_ANY = -1;
+    private const int DWMWA_CLOAKED = 14;
 
     private readonly AppSettingsService _settingsService;
     private readonly StartMenuBoundsService _boundsService;
@@ -56,6 +57,28 @@ public sealed class WinKeyHookService : IDisposable
     public bool CanContinueNativeHandover() => IsInputHandoverPending &&
         _nativeHandoverWindow != IntPtr.Zero && GetForegroundWindow() == _nativeHandoverWindow &&
         IsStartMenuHostWindowCached(_nativeHandoverWindow);
+
+    public bool TryDismissNativeHandoverMenu()
+    {
+        var native = _nativeHandoverWindow;
+        if (!IsInputHandoverPending || native == IntPtr.Zero || GetForegroundWindow() != native ||
+            !IsStartMenuHostWindowZeroAlloc(native)) return false;
+
+        // The Start menu ignores posted/sent WM_KEYDOWN and WA_INACTIVE, and refuses
+        // SetForegroundWindow while it is foreground; only real input closes it.
+        // Inject Escape only while the verified menu still owns the foreground. The popup
+        // is activated after HasNativeHandoverMenuClosed, so the key cannot reach it.
+        DismissNativeStartMenu();
+        return true;
+    }
+
+    public bool HasNativeHandoverMenuClosed()
+    {
+        var native = _nativeHandoverWindow;
+        if (native == IntPtr.Zero || GetForegroundWindow() != native)
+            return true;
+        return DwmGetWindowAttribute(native, DWMWA_CLOAKED, out int cloaked, sizeof(int)) >= 0 && cloaked != 0;
+    }
 
     public void CompleteInputHandover()
     {
@@ -208,8 +231,8 @@ public sealed class WinKeyHookService : IDisposable
                             _handoverWindowUntilTick = now + 1500;
                             _interceptedKeyUps.Add(vk);
 
-                            // Keep the native menu visible until the replacement cover has rendered.
-                            // Focus transfer then dismisses it; never send a global Esc into the new popup.
+                            // Keep the native menu visible until the replacement cover has rendered;
+                            // TryDismissNativeHandoverMenu then closes it before the popup is activated.
                             AllowSetForegroundWindow(ASFW_ANY);
 
                             StartMenuTypingIntercepted?.Invoke(typedChar);
@@ -461,6 +484,9 @@ public sealed class WinKeyHookService : IDisposable
 
     [DllImport("user32.dll")]
     private static extern bool AllowSetForegroundWindow(int dwProcessId);
+
+    [DllImport("dwmapi.dll")]
+    private static extern int DwmGetWindowAttribute(IntPtr hwnd, int attribute, out int value, int size);
 
     [DllImport("user32.dll")]
     private static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint lpdwProcessId);
