@@ -287,7 +287,7 @@ public partial class MainWindow : Window
         // Set text before showing, but don't focus a non-activated cover and prematurely dismiss Start.
         if (fromStartMenuTyping)
         {
-            SearchTextBox.Text = initialText!;
+            SearchTextBox.Text = _winKeyHookService?.ReplaysHandoverThroughIme == true ? string.Empty : initialText!;
             SearchTextBox.CaretIndex = SearchTextBox.Text.Length;
         }
         else if (_settingsService.Current.ClearSearchOnOpen)
@@ -506,7 +506,7 @@ public partial class MainWindow : Window
             // 开始菜单收起时可能再次抢走焦点，连续稳定后才结束按键缓冲。
             if (now - _inputHandoverFocusReadySinceTick >= 120)
             {
-                hook.CompleteInputHandover();
+                hook.FinishInputHandover();
                 _inputHandoverFocusTimer.Stop();
             }
             return;

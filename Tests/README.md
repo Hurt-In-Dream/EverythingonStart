@@ -12,6 +12,8 @@ pwsh -NoProfile -File .\Tests\Test-PinyinSearch.ps1 -AppAssemblyDirectory .\bin\
 
 ## Win 键输入交接
 
+输入法接管回归覆盖：中日韩布局下的快速前缀按键重放、候选空格顺序、取消清空缓存、前台验证和注入失败不重复重试。此替身测试验证按键流，不代替 Microsoft 拼音/第三方输入法真实候选窗测试。
+
 ### 菜单关闭请求与不透明度预览
 
 ```powershell

@@ -40,6 +40,9 @@ $source = [regex]::Replace($source,
     "    private static bool IsStartMenuHostWindowZeroAlloc(IntPtr fg) => fg == new IntPtr(2);`n`n")
 
 $replacements = @{
+    'private static extern IntPtr GetKeyboardLayout(uint thread);' = 'private static IntPtr GetKeyboardLayout(uint thread) => new(TestNative.ImeLayout ? 0x0804 : 0x0409);'
+    'private static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint lpdwProcessId);' = 'private static uint GetWindowThreadProcessId(IntPtr hWnd, out uint lpdwProcessId) { lpdwProcessId = 1; return 1; }'
+    'private static extern uint SendInput(uint count, INPUT[] inputs, int size);' = 'private static uint SendInput(uint count, INPUT[] inputs, int size) { foreach (var input in inputs) TestNative.ReplayedKeys.Add((input.Data.Keyboard.Vk, input.Data.Keyboard.Flags)); return TestNative.RejectReplay ? 0 : count; }'
     'private static extern IntPtr GetForegroundWindow();' = 'private static IntPtr GetForegroundWindow() => TestNative.Foreground;'
     'private static extern short GetAsyncKeyState(int vKey);' = 'private static short GetAsyncKeyState(int vKey) => TestNative.ControlDown && vKey == 0x11 ? unchecked((short)0x8000) : (short)0;'
     'private static extern IntPtr CallNextHookEx(IntPtr hhk, int nCode, IntPtr wParam, IntPtr lParam);' = 'private static IntPtr CallNextHookEx(IntPtr hhk, int nCode, IntPtr wParam, IntPtr lParam) => new(-99);'
@@ -50,6 +53,7 @@ $replacements = @{
 foreach ($signature in $replacements.Keys) {
     $pattern = '\[DllImport\([^\r\n]+\)\]\s+' + [regex]::Escape($signature)
     if ($signature.Contains('DwmGetWindowAttribute') -and !$source.Contains($signature)) { continue }
+    if (($signature.Contains('GetKeyboardLayout') -or $signature.Contains('SendInput')) -and !$source.Contains($signature)) { continue }
     if ([regex]::Matches($source, $pattern).Count -ne 1) {
         throw "Expected exactly one platform declaration: $signature"
     }

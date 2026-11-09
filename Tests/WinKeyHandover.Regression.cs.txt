@@ -10,6 +10,8 @@ public static class TestNative
     public static bool TextFocus;
     public static readonly List<(byte Key, uint Flags)> SyntheticKeys = new();
     public static bool MenuCloaked;
+    public static bool ImeLayout, RejectReplay;
+    public static readonly List<(ushort Key, uint Flags)> ReplayedKeys = new();
 }
 
 internal static class Program
@@ -19,6 +21,44 @@ internal static class Program
 
     private static int Main()
     {
+        var finish = typeof(WinKeyHookService).GetMethod("FinishInputHandover");
+        using (var s = new Scenario())
+        {
+            TestNative.ImeLayout = true;
+            s.Begin(); s.Key('B', delay: 20); s.Key('C', delay: 20);
+            bool noPrematureText = s.Search == "";
+            TestNative.Foreground = new(3); TestNative.TextFocus = true;
+            bool accepted = finish != null && (bool)finish.Invoke(s.Hook, null)!;
+            Check("IME-fast-prefix-replayed-as-VK-not-Text", s, "", "", "", noPrematureText && accepted &&
+                TestNative.ReplayedKeys.SequenceEqual(new[] {
+                    ((ushort)'A', 0u), ((ushort)'A', 2u), ((ushort)'B', 0u), ((ushort)'B', 2u),
+                    ((ushort)'C', 0u), ((ushort)'C', 2u) }) && !s.Pending);
+        }
+        using (var s = new Scenario())
+        {
+            TestNative.ImeLayout = true; s.Begin(); s.Complete();
+            Check("IME-cancel-discards-prefix", s, "", "", "", TestNative.ReplayedKeys.Count == 0);
+        }
+        using (var s = new Scenario())
+        {
+            TestNative.ImeLayout = true; s.Begin();
+            bool accepted = finish != null && (bool)finish.Invoke(s.Hook, null)!;
+            Check("IME-replay-requires-popup-foreground", s, "", "", "", !accepted && TestNative.ReplayedKeys.Count == 0);
+        }
+        using (var s = new Scenario())
+        {
+            TestNative.ImeLayout = true; s.Begin(); s.Key('B'); s.Send(0x20); s.Send(0x20, up: true);
+            TestNative.Foreground = new(3);
+            bool accepted = finish != null && (bool)finish.Invoke(s.Hook, null)!;
+            Check("IME-candidate-space-preserved-in-order", s, "", "", "", accepted &&
+                TestNative.ReplayedKeys.Select(k => k.Key).SequenceEqual(new ushort[] { 65,65,66,66,32,32 }));
+        }
+        using (var s = new Scenario())
+        {
+            TestNative.ImeLayout = true; s.Begin(); TestNative.Foreground = new(3); TestNative.RejectReplay = true;
+            bool accepted = finish != null && (bool)finish.Invoke(s.Hook, null)!;
+            Check("IME-failed-injection-not-retried-or-committed-as-raw-text", s, "", "", "", !accepted && !s.Pending);
+        }
         var dismiss = typeof(WinKeyHookService).GetMethod("TryDismissNativeHandoverMenu");
         var closed = typeof(WinKeyHookService).GetMethod("HasNativeHandoverMenuClosed");
         if (dismiss == null || closed == null)
@@ -276,9 +316,16 @@ internal static class Program
             TestNative.TextFocus = false;
             TestNative.SyntheticKeys.Clear();
             TestNative.MenuCloaked = false;
+            TestNative.ImeLayout = false;
+            TestNative.RejectReplay = false;
+            TestNative.ReplayedKeys.Clear();
             _hook = new WinKeyHookService(new AppSettingsService(), new StartMenuBoundsService());
             _hook.SetMainWindowHandle(new(3));
-            _hook.StartMenuTypingIntercepted += text => Search += text;
+            _hook.StartMenuTypingIntercepted += text =>
+            {
+                if ((bool?)typeof(WinKeyHookService).GetProperty("ReplaysHandoverThroughIme")?.GetValue(_hook) != true)
+                    Search += text;
+            };
             _hook.AdditionalTypingIntercepted += text => Search += text;
         }
 

@@ -48,6 +48,54 @@ public sealed class WinKeyHookService : IDisposable
     private bool _inputHandoverPending;
     private IntPtr _nativeHandoverWindow;
     private readonly HashSet<int> _interceptedKeyUps = [];
+    private readonly List<(ushort Key, bool Shift)> _imeHandoverKeys = [];
+    public bool ReplaysHandoverThroughIme { get; private set; }
+
+    private static bool UsesImeLayout(IntPtr window)
+    {
+        uint thread = GetWindowThreadProcessId(window, out _);
+        int language = (int)(GetKeyboardLayout(thread).ToInt64() & 0x3ff);
+        // Replay also works when a CJK IME is temporarily in English mode.
+        return language is 0x04 or 0x11 or 0x12;
+    }
+
+    private void BufferImeKey(int vk) =>
+        _imeHandoverKeys.Add(((ushort)vk, (GetAsyncKeyState(VK_SHIFT) & 0x8000) != 0));
+
+    public bool FinishInputHandover()
+    {
+        // Only the stable-textbox-focus path may replay; cancellation always discards.
+        if (!IsInputHandoverPending || GetForegroundWindow() != _mainWindowHwnd)
+            return false;
+        if (ReplaysHandoverThroughIme && _imeHandoverKeys.Count > 0)
+        {
+            var inputs = new List<INPUT>();
+            bool physicalShift = (GetAsyncKeyState(VK_SHIFT) & 0x8000) != 0;
+            bool shift = physicalShift;
+            void Key(ushort key, bool up) => inputs.Add(new INPUT
+            {
+                Type = 1,
+                Data = new INPUTUNION { Keyboard = new KEYBDINPUT { Vk = key, Flags = up ? KEYEVENTF_KEYUP : 0 } }
+            });
+            foreach (var key in _imeHandoverKeys)
+            {
+                if (shift != key.Shift) { Key(VK_SHIFT, !key.Shift); shift = key.Shift; }
+                Key(key.Key, false); Key(key.Key, true);
+            }
+            if (shift != physicalShift) Key(VK_SHIFT, !physicalShift);
+            // One batch preserves buffered-key order. Do not use Unicode injection:
+            // VK packets must pass through the target textbox's IME/TSF composition.
+            if (SendInput((uint)inputs.Count, inputs.ToArray(), Marshal.SizeOf<INPUT>()) != inputs.Count)
+            {
+                // Do not retry a partially accepted batch and duplicate its prefix.
+                CompleteInputHandover();
+                return false;
+            }
+            _interceptedKeyUps.Clear();
+        }
+        CompleteInputHandover();
+        return true;
+    }
 
     public bool IsInputHandoverPending =>
         _inputHandoverPending && Environment.TickCount64 < _handoverWindowUntilTick;
@@ -82,6 +130,8 @@ public sealed class WinKeyHookService : IDisposable
 
     public void CompleteInputHandover()
     {
+        _imeHandoverKeys.Clear();
+        ReplaysHandoverThroughIme = false;
         _inputHandoverPending = false;
         _handoverWindowUntilTick = 0;
         _nativeHandoverWindow = IntPtr.Zero;
@@ -201,6 +251,17 @@ public sealed class WinKeyHookService : IDisposable
                 }
                 else if (isKeyDown)
                 {
+                    // Candidate selection/edit keys typed during the same short handover
+                    // belong to the IME too, not to the closing Start menu.
+                    if (!_winKeyDown && IsInputHandoverPending && ReplaysHandoverThroughIme &&
+                        vk is 0x20 or 0x08 or 0x0D or 0xDE &&
+                        (GetAsyncKeyState(VK_CONTROL) & 0x8000) == 0 &&
+                        (GetAsyncKeyState(VK_MENU) & 0x8000) == 0)
+                    {
+                        _interceptedKeyUps.Add(vk);
+                        BufferImeKey(vk);
+                        return 1;
+                    }
                     if (_winKeyDown)
                     {
                         _otherKeyPressedWhileWinDown = true;
@@ -215,7 +276,8 @@ public sealed class WinKeyHookService : IDisposable
                             TryMapPrintableKey(vk, out var extraChar))
                         {
                             _interceptedKeyUps.Add(vk);
-                            AdditionalTypingIntercepted?.Invoke(extraChar);
+                            if (ReplaysHandoverThroughIme) BufferImeKey(vk);
+                            else AdditionalTypingIntercepted?.Invoke(extraChar);
                             return 1;
                         }
 
@@ -230,6 +292,8 @@ public sealed class WinKeyHookService : IDisposable
                             // 有界保护：窗口无法激活时不能无限接管其他应用的输入。
                             _handoverWindowUntilTick = now + 1500;
                             _interceptedKeyUps.Add(vk);
+                            ReplaysHandoverThroughIme = UsesImeLayout(nativeWindow);
+                            if (ReplaysHandoverThroughIme) BufferImeKey(vk);
 
                             // Keep the native menu visible until the replacement cover has rendered;
                             // TryDismissNativeHandoverMenu then closes it before the popup is activated.
@@ -452,6 +516,35 @@ public sealed class WinKeyHookService : IDisposable
         public uint time;
         public UIntPtr dwExtraInfo;
     }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct INPUT { public uint Type; public INPUTUNION Data; }
+    [StructLayout(LayoutKind.Explicit)]
+    private struct INPUTUNION
+    {
+        [FieldOffset(0)] public KEYBDINPUT Keyboard;
+        [FieldOffset(0)] public MOUSEINPUT Mouse;
+    }
+    [StructLayout(LayoutKind.Sequential)]
+    private struct KEYBDINPUT
+    {
+        public ushort Vk, Scan;
+        public uint Flags, Time;
+        public UIntPtr ExtraInfo;
+    }
+    [StructLayout(LayoutKind.Sequential)]
+    private struct MOUSEINPUT
+    {
+        public int X, Y;
+        public uint MouseData, Flags, Time;
+        public UIntPtr ExtraInfo;
+    }
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr GetKeyboardLayout(uint thread);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern uint SendInput(uint count, INPUT[] inputs, int size);
 
     [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
     private static extern IntPtr SetWindowsHookExW(
