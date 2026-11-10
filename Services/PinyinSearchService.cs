@@ -103,7 +103,9 @@ public static class PinyinSearchService
         if (BuildRegexPattern(query) == null) return query;
         // Each whitespace-separated term remains an AND; category/type prefixes stay outside the OR.
         var terms = query.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
-        string expanded = string.Join(' ', terms.Select(term => $"<{term}|regex:\"{BuildRegexPattern(term)}\">"));
+        // Romanization can only add names containing Hanzi. A cheap native AND
+        // guard keeps the large pronunciation regex away from Latin-only names.
+        string expanded = string.Join(' ', terms.Select(term => $"<{term}|<regex:\"[〇㐀-䶿一-鿿]\" regex:\"{BuildRegexPattern(term)}\">>"));
         return expanded.Length <= MaxPatternLength ? expanded : query;
     }
 

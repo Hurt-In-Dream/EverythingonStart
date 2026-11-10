@@ -74,6 +74,7 @@ public partial class MainWindow : Window
 
     private readonly ObservableCollection<SearchListEntry> _entries = [];
     private CancellationTokenSource? _searchCts;
+    private readonly SemaphoreSlim _searchGate = new(1, 1);
     private ITaskbarList2? _taskbarList;
     private SearchCategory _currentCategory = SearchCategory.All;
     private SearchResultItem? _selectedItem;
@@ -918,6 +919,10 @@ public partial class MainWindow : Window
 
     private void OnSearchTextChanged(object sender, TextChangedEventArgs e)
     {
+        // Invalidate immediately, not after the debounce tick: queued results and
+        // suggestions for the previous text must not replace the current query.
+        Interlocked.Increment(ref _searchVersion);
+        _searchCts?.Cancel();
         bool hasText = !string.IsNullOrEmpty(SearchTextBox.Text);
         PlaceholderText.Visibility = hasText ? Visibility.Collapsed : Visibility.Visible;
         ClearSearchButton.Visibility = hasText ? Visibility.Visible : Visibility.Collapsed;
@@ -1002,7 +1007,28 @@ public partial class MainWindow : Window
         }
 
         _isShowingDefaultLanding = false;
-        Task.Run(() => ExecuteLocalSearch(query, category, version, token), token);
+        _ = ExecuteLatestSearchAsync(query, category, version, token);
+    }
+
+    private async Task ExecuteLatestSearchAsync(string query, SearchCategory category, long version, CancellationToken token)
+    {
+        try
+        {
+            // Cancel waiting requests without occupying ThreadPool threads behind
+            // the synchronous native SDK. Only the latest query needs to run next.
+            await _searchGate.WaitAsync(token);
+            try
+            {
+                await Task.Run(() => ExecuteLocalSearch(query, category, version, token), token);
+            }
+            finally
+            {
+                _searchGate.Release();
+            }
+        }
+        catch (OperationCanceledException) when (token.IsCancellationRequested)
+        {
+        }
     }
 
     private void PopulateDefaultLandingEntries()
@@ -1076,6 +1102,17 @@ public partial class MainWindow : Window
 
             if (token.IsCancellationRequested || version != Volatile.Read(ref _searchVersion))
                 return;
+
+            // Memory-indexed apps/settings and direct Web search are usable while
+            // Everything is still evaluating a potentially expensive pinyin query.
+            Dispatcher.BeginInvoke(() =>
+            {
+                if (token.IsCancellationRequested || version != Volatile.Read(ref _searchVersion))
+                    return;
+                BuildAllCategoryList(query, appResults, settingResults,
+                    new EverythingQueryResult(Array.Empty<SearchResultItem>(), 0),
+                    new EverythingQueryResult(Array.Empty<SearchResultItem>(), 0), maxGroup);
+            }, DispatcherPriority.Input);
 
             var folderResult = _everythingService.Query(query, SearchCategory.Folders, maxGroup, token);
             if (token.IsCancellationRequested || version != Volatile.Read(ref _searchVersion))

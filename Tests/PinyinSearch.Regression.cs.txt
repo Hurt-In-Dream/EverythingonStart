@@ -65,7 +65,8 @@ internal static class Program
         var everything = (EverythingSearchService)RuntimeHelpers.GetUninitializedObject(typeof(EverythingSearchService));
         typeof(EverythingSearchService).GetField("_settingsService", Private)!.SetValue(everything, settings);
         string query = everything.BuildCategoryQuery("wx", SearchCategory.Folders);
-        Check("category-filter-outside-or", query.StartsWith("folder: <wx|regex:\"", StringComparison.Ordinal));
+        Check("category-filter-outside-or", query.StartsWith("folder: <wx|<regex:\"", StringComparison.Ordinal));
+        Check("hanzi-prefilter-before-pinyin", query.Contains("regex:\"[〇㐀-䶿一-鿿]\" regex:\"", StringComparison.Ordinal));
         foreach (string q in new[] { "ext:pdf wx", "*.pdf", "\"wx\"", "C:\\Docs\\wx" })
             Check($"native-syntax-{q}", everything.BuildCategoryQuery(q, SearchCategory.All) == q);
         settings.Current.EnableRegex = true;

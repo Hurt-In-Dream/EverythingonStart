@@ -6,12 +6,12 @@
 
 ## 下载与快速开始
 
-从 [v1.5.3 Release](https://github.com/Hurt-In-Dream/EverythingonStart/releases/tag/v1.5.3) 选择 Windows x64 版本：
+从 [v1.5.4 Release](https://github.com/Hurt-In-Dream/EverythingonStart/releases/tag/v1.5.4) 选择 Windows x64 版本：
 
 | 版本 | 下载 | 使用方式 |
 | --- | --- | --- |
-| 安装版 | [Setup-x64.exe](https://github.com/Hurt-In-Dream/EverythingonStart/releases/download/v1.5.3/EverythingonStart-v1.5.3-Setup-x64.exe) | 按用户安装，无需管理员权限，默认安装到 `%LOCALAPPDATA%\Programs\EverythingonStart` |
-| 绿色单文件版 | [Portable-x64.exe](https://github.com/Hurt-In-Dream/EverythingonStart/releases/download/v1.5.3/EverythingonStart-v1.5.3-Portable-x64.exe) | 下载一个 EXE 即可运行，无需旁置 DLL 或安装 .NET |
+| 安装版 | [Setup-x64.exe](https://github.com/Hurt-In-Dream/EverythingonStart/releases/download/v1.5.4/EverythingonStart-v1.5.4-Setup-x64.exe) | 按用户安装，无需管理员权限，默认安装到 `%LOCALAPPDATA%\Programs\EverythingonStart` |
+| 绿色单文件版 | [Portable-x64.exe](https://github.com/Hurt-In-Dream/EverythingonStart/releases/download/v1.5.4/EverythingonStart-v1.5.4-Portable-x64.exe) | 下载一个 EXE 即可运行，无需旁置 DLL 或安装 .NET |
 
 单文件版内置 .NET 与 Everything SDK，首次运行会将原生运行库解压到 .NET 的用户临时缓存；设置仍保存在用户目录，不是零磁盘写入模式。
 推荐 Windows 11 x64。文件检索需要安装并在后台运行 [Everything](https://www.voidtools.com/downloads/)。
@@ -19,6 +19,12 @@
 
 更新前请先从托盘退出旧实例，再安装或运行新版。设置保存在 `%LOCALAPPDATA%\EverythingonStart\settings.json`，卸载保留设置；安装器不自动更改开机启动项。
 发行包尚未进行代码签名；可使用同一 Release 的 `SHA256SUMS.txt` 校验下载文件。
+
+### v1.5.4 搜索响应优化
+
+- 拼音检索先对中文名称预筛选，避免纯英文文件名执行大型拼音正则；保留原文、全拼、首字母及高级搜索语法。
+- “全部”页先显示应用、系统设置和直接 Web 入口，再补充文件结果；输入变化立即取消旧查询，异步合并等待中的搜索，减少快速输入时的线程堆积与旧结果闪回。
+- 已进入 Everything 原生 SDK 的同步检索仍需等待返回，不能强制中断；实测数据及验证边界见 [发行说明](docs/RELEASE-v1.5.4.md)。
 
 ### v1.5.0 拼音与首字母搜索
 
@@ -90,7 +96,7 @@
 - **实时 Web 联网搜索建议**：[`WebSuggestionService`](Services/WebSuggestionService.cs) 异步获取搜索联想词，支持一键通过 Bing、Google、百度或 DuckDuckGo 在默认浏览器中打开搜索结果。
 - **Web 右栏网页预览**：选中 Web 搜索词或建议后，右侧展示搜索引擎返回的网站、可点击标题、URL、摘要及可用的站内链接。保留完整搜索页入口；不再把 Web 项显示成文件属性卡片。
 - **MingCute Web 图标**：搜索项、网站卡片及外部链接采用 MingCute 矢量图标，跟随主题强调色，文件与应用的原始图标不变。
-- **高性能阴影隔离与微浮动动画**：窗口阴影独立为启用 `<BitmapCache />` 的兄弟背景层，搜索列表与操作按钮具备平滑的鼠标悬停高亮及微浮动位移动画，结合 14ms 输入防抖与单键元组排序，确保高频输入与滚动零卡顿。
+- **高性能阴影隔离与微浮动动画**：窗口阴影独立为启用 `<BitmapCache />` 的兄弟背景层，搜索列表与操作按钮具备鼠标悬停高亮及微浮动位移动画，结合 14ms 输入防抖、过期查询取消和分阶段结果显示，减少高频输入时的等待与界面负担。
 
 ### 5. 排序方式、附加类型筛选与三种文件类型配置模式
 - **多维排序方式**：主界面顶部工具栏与右侧三点菜单支持实时切换：
@@ -152,7 +158,9 @@ flowchart LR
 ### 拼音搜索规则
 
 普通输入自动同时匹配原文字和拼音；应用与设置的原文字标题匹配优先于拼音匹配。
-文件检索将拼音转换为 Everything 原生正则字符集，分类、附加类型筛选与现有排序仍由 Everything 执行，不在每次输入时遍历或建立另一份全盘文件索引。
+文件检索将拼音转换为 Everything 原生正则字符集，先用汉字条件预筛选拼音分支，避免对纯英文文件名执行大型拼音正则；原文分支保留，分类、附加类型筛选与现有排序仍由 Everything 执行，不在每次输入时遍历或建立另一份全盘文件索引。
+
+“全部”分类先显示内存索引中的应用、设置和直接 Web 搜索入口，再补充文件结果。输入变化立即取消旧查询；等待中的搜索异步合并，避免快速输入时大量线程阻塞在原生检索锁上。已经进入原生 SDK 的同步搜索仍需等返回，不能强制中断。
 
 - 推荐连续输入不带声调的全拼或首字母；空格分隔的词保持 AND 匹配。
 - 文件搜索中的引号、通配符、路径、`ext:` 等高级语法保持原样，不自动拼音展开。
