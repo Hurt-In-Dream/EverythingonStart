@@ -100,6 +100,7 @@ public sealed class SearchResultItem : INotifyPropertyChanged
     public required string Subtitle { get; init; }
     public required string FullPath { get; init; }
     public string DirectoryPath { get; init; } = string.Empty;
+    public string AppUserModelId { get; init; } = string.Empty;
     public string WebSearchQuery { get; init; } = string.Empty;
     public required SearchResultKind Kind { get; init; }
     public long SizeBytes { get; init; } = -1;
@@ -108,9 +109,10 @@ public sealed class SearchResultItem : INotifyPropertyChanged
     public bool IsWeb => Kind is SearchResultKind.WebDirect or SearchResultKind.WebSuggestion;
     public bool IsSetting => Kind == SearchResultKind.Setting;
     public bool IsApp => Kind == SearchResultKind.App;
-    public bool IsFileSystemEntry => Kind is SearchResultKind.Folder or SearchResultKind.Document or SearchResultKind.Photo or SearchResultKind.File or SearchResultKind.App;
-    public bool SupportsRunAsAdmin => !IsWeb && !IsSetting && !IsFolder;
-    public bool SupportsOpenLocation => !IsWeb && !IsSetting && !string.IsNullOrWhiteSpace(FullPath);
+    public bool IsShellApp => IsApp && !string.IsNullOrWhiteSpace(AppUserModelId);
+    public bool IsFileSystemEntry => !IsShellApp && Kind is SearchResultKind.Folder or SearchResultKind.Document or SearchResultKind.Photo or SearchResultKind.File or SearchResultKind.App;
+    public bool SupportsRunAsAdmin => !IsWeb && !IsSetting && !IsFolder && !IsShellApp;
+    public bool SupportsOpenLocation => !IsWeb && !IsSetting && !IsShellApp && !string.IsNullOrWhiteSpace(FullPath);
     public bool SupportsCopyPath => !IsWeb && !string.IsNullOrWhiteSpace(FullPath);
     public int MatchScore { get; set; }
 
@@ -163,6 +165,8 @@ public sealed class SearchResultItem : INotifyPropertyChanged
                 return "联机 Web 搜索";
             if (IsSetting)
                 return "Windows 系统设置";
+            if (IsShellApp)
+                return "Windows 应用";
             if (IsFolder)
                 return "本地文件夹";
             if (SizeBytes >= 0)

@@ -3,6 +3,7 @@ using System.IO;
 using System.Windows;
 using EverythingonStart.Models;
 using Microsoft.Win32;
+using Vanara.Windows.Shell;
 
 namespace EverythingonStart.Services;
 
@@ -110,6 +111,13 @@ public sealed class ActionExecutorService
         if (item == null || string.IsNullOrWhiteSpace(item.FullPath))
             return false;
 
+        if (item.IsShellApp)
+        {
+            using var app = new ShellItem(item.FullPath);
+            app.InvokeVerb("open");
+            return true;
+        }
+
         if (item.IsFileSystemEntry)
             _everythingService.IncrementRunCount(item.FullPath);
 
@@ -128,7 +136,7 @@ public sealed class ActionExecutorService
 
     public bool ExecuteRunAsAdminOrTakeOwnership(SearchResultItem? item)
     {
-        if (item == null || item.IsWeb || item.IsSetting || string.IsNullOrWhiteSpace(item.FullPath))
+        if (item == null || item.IsWeb || item.IsSetting || item.IsShellApp || string.IsNullOrWhiteSpace(item.FullPath))
             return false;
 
         _everythingService.IncrementRunCount(item.FullPath);

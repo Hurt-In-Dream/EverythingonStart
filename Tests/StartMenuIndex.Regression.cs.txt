@@ -1,0 +1,214 @@
+using System.Diagnostics;
+using System.IO;
+using System.Reflection;
+using System.Security.Cryptography;
+using System.Text.Json;
+using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Media.Imaging;
+using System.Windows.Threading;
+using EverythingonStart;
+using EverythingonStart.Models;
+using EverythingonStart.Services;
+using Vanara.PInvoke;
+using static Vanara.PInvoke.User32;
+
+internal static class Program
+{
+    private sealed record RegisteredApp(string Name, string AppID);
+    private sealed record LaunchTarget(string Name, string AppID, string ExecutablePath);
+    private sealed record TestData(RegisteredApp[] Catalog, LaunchTarget[] LaunchTargets);
+    private static int _checks;
+    private static int _failed;
+    private const BindingFlags Private = BindingFlags.Instance | BindingFlags.NonPublic;
+
+    [STAThread]
+    private static int Main(string[] args)
+    {
+        var data = JsonSerializer.Deserialize<TestData>(File.ReadAllText(args[0]))!;
+        var application = new Application { ShutdownMode = ShutdownMode.OnExplicitShutdown };
+        var timer = Stopwatch.StartNew();
+        var index = new StartMenuIndexService();
+        var all = index.QueryApps(string.Empty, 5000);
+        Console.WriteLine($"索引应用数量：{all.Count}；构建耗时：{timer.ElapsedMilliseconds} ms");
+        var shellApps = all.Where(item => item.IsShellApp).ToArray();
+        var fileApps = all.Where(item => File.Exists(item.FullPath)).ToArray();
+        Check("传统应用保留文件操作", fileApps.Length > 0 && fileApps.All(item =>
+            item.IsFileSystemEntry && item.SupportsRunAsAdmin && item.SupportsOpenLocation && !item.IsShellApp));
+        Check("注册应用按标识去重", shellApps.Select(item => item.AppUserModelId)
+            .Distinct(StringComparer.OrdinalIgnoreCase).Count() == shellApps.Length);
+        Check("注册应用不执行文件操作", shellApps.All(item =>
+            !item.IsFileSystemEntry && !item.SupportsRunAsAdmin && !item.SupportsOpenLocation));
+        Check("注册应用保留启动路径", shellApps.All(item => item.SupportsCopyPath &&
+            item.FullPath == $"shell:AppsFolder\\{item.AppUserModelId}" && item.DirectoryPath.Length == 0));
+        var packages = data.Catalog.Where(item => item.AppID.Contains('!')).ToArray();
+        int covered = packages.Count(expected => all.Any(item =>
+            item.AppUserModelId.Equals(expected.AppID, StringComparison.OrdinalIgnoreCase) ||
+            item.Title.Equals(expected.Name, StringComparison.OrdinalIgnoreCase)));
+        Console.WriteLine($"系统包应用覆盖：{covered}/{packages.Length}");
+        Check("收录系统实际注册的包应用", covered == packages.Length);
+
+        var targets = data.Catalog.Where(item => item.Name is "Microsoft Store" or "Microsoft Rewards").ToArray();
+        Console.WriteLine($"本机待验证反馈应用：{targets.Length}");
+        foreach (var target in targets)
+        {
+            foreach (string query in new[] { target.Name, target.Name.ToUpperInvariant(), target.Name[10..] })
+            {
+                var results = index.QueryApps(query, 40);
+                Check($"搜索 {query}", results.Any(item => item.AppUserModelId == target.AppID));
+            }
+            Check($"精确匹配优先 {target.Name}", index.QueryApps(target.Name, 40)[0].AppUserModelId == target.AppID);
+        }
+
+        foreach (var (query, title) in new[] { ("jisuanqi", "计算器"), ("jsq", "计算器"),
+            ("jishiben", "记事本"), ("rwglq", "任务管理器") })
+            Check($"现有应用拼音搜索 {query}", index.QueryApps(query, 40).Any(item => item.Title == title));
+        Check("现有系统设置拼音搜索", index.QuerySettings("renwulan", 40).Any(item => item.Title == "任务栏设置"));
+        var background = Task.Run(() => new StartMenuIndexService().QueryApps(string.Empty, 5000)).GetAwaiter().GetResult();
+        Check("后台线程构建真实应用索引", targets.All(target => background.Any(item => item.AppUserModelId == target.AppID)));
+        var concurrent = Enumerable.Range(0, 8).Select(_ => Task.Run(() => index.QueryApps("Microsoft", 5000))).ToArray();
+        Task.WaitAll(concurrent);
+        Check("并发查询结果稳定", concurrent.All(task => task.Result.Select(item => item.FullPath)
+            .SequenceEqual(concurrent[0].Result.Select(item => item.FullPath))));
+
+        using var everything = new EverythingSearchService();
+        var actions = new ActionExecutorService(everything);
+        var icons = new IconCacheService();
+        var targetItems = targets.Select(target => index.QueryApps(target.Name, 40)
+            .Single(item => item.AppUserModelId == target.AppID)).ToArray();
+        foreach (var item in targetItems)
+        {
+            Check($"拒绝文件提权 {item.Title}", !actions.ExecuteRunAsAdminOrTakeOwnership(item));
+            Check($"拒绝文件定位 {item.Title}", !actions.ExecuteOpenFileLocation(item));
+            icons.PopulateIconsAsync(item);
+            var placeholder = item.SmallIcon;
+            icons.PopulateLargeIconAsync(item);
+            bool loaded = WaitUntil(() => !ReferenceEquals(item.SmallIcon, placeholder) &&
+                !ReferenceEquals(item.LargeIcon, placeholder) &&
+                !ReferenceEquals(item.SmallIcon, item.LargeIcon), TimeSpan.FromSeconds(10));
+            Check($"读取真实应用图标 {item.Title}", loaded &&
+                item.SmallIcon is BitmapSource { PixelWidth: > 0, PixelHeight: > 0, IsFrozen: true } &&
+                item.LargeIcon is BitmapSource { PixelWidth: >= 32, PixelHeight: >= 32, IsFrozen: true });
+            var cached = index.QueryApps(item.Title, 40).Single(result => result.AppUserModelId == item.AppUserModelId);
+            icons.PopulateIconsAsync(cached);
+            Check($"应用图标缓存 {item.Title}", ReferenceEquals(item.SmallIcon, cached.SmallIcon) &&
+                ReferenceEquals(item.LargeIcon, cached.LargeIcon));
+        }
+        if (targetItems.Length == 2)
+            Check("不同应用不共用图标", !ReferenceEquals(targetItems[0].SmallIcon, targetItems[1].SmallIcon) &&
+                !ReferenceEquals(targetItems[0].LargeIcon, targetItems[1].LargeIcon));
+
+        VerifySearchCategories(index, everything, icons, actions, targetItems);
+        foreach (var target in data.LaunchTargets)
+        {
+            var item = targetItems.Single(item => item.AppUserModelId == target.AppID);
+            var before = GetAppWindows(target.ExecutablePath);
+            Check($"请求启动 {target.Name}", actions.ExecuteOpen(item));
+            var windows = new HashSet<HWND>();
+            bool visible = WaitUntil(() =>
+            {
+                windows = GetAppWindows(target.ExecutablePath);
+                return windows.Count > 0;
+            }, TimeSpan.FromSeconds(20));
+            Check($"真实应用窗口可见 {target.Name}", visible);
+            var added = windows.Except(before).ToArray();
+            foreach (var window in added)
+                PostMessage(window, WindowMessage.WM_CLOSE, IntPtr.Zero, IntPtr.Zero);
+            Check($"关闭本次新增窗口 {target.Name}", WaitUntil(() =>
+                !GetAppWindows(target.ExecutablePath).Overlaps(added), TimeSpan.FromSeconds(10)));
+            Check($"保留原有窗口 {target.Name}", before.IsSubsetOf(GetAppWindows(target.ExecutablePath)));
+        }
+
+        application.Shutdown();
+        Console.WriteLine($"测试结果：{_checks - _failed}/{_checks} 通过");
+        return _failed == 0 ? 0 : 1;
+    }
+
+    private static void VerifySearchCategories(StartMenuIndexService index, EverythingSearchService everything,
+        IconCacheService icons, ActionExecutorService actions, SearchResultItem[] targets)
+    {
+        var settingsPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            "EverythingonStart", "settings.json");
+        byte[]? before = File.Exists(settingsPath) ? SHA256.HashData(File.ReadAllBytes(settingsPath)) : null;
+        var settings = new AppSettingsService();
+        // 仅在测试进程内关闭 Web 请求，不保存配置。
+        settings.Current.ShowWebSuggestionsInAll = false;
+        settings.Current.IncludeStartMenuApps = true;
+        settings.Current.IncludeEverythingApps = false;
+        var window = new MainWindow(settings, everything, index, new WebSuggestionService(settings), icons,
+            actions, new StartMenuBoundsService(settings));
+        var searchBox = (TextBox)typeof(MainWindow).GetField("SearchTextBox", Private)!.GetValue(window)!;
+        var trigger = typeof(MainWindow).GetMethod("TriggerSearchImmediate", Private)!;
+        foreach (var category in new[] { SearchCategory.All, SearchCategory.Apps })
+        {
+            window.SelectCategoryTab(category);
+            foreach (var item in targets)
+            {
+                searchBox.Text = item.Title;
+                trigger.Invoke(window, null);
+                bool selected = WaitUntil(() =>
+                    ((SearchResultItem?)typeof(MainWindow).GetField("_selectedItem", Private)!.GetValue(window))
+                    ?.AppUserModelId == item.AppUserModelId, TimeSpan.FromSeconds(10));
+                Check($"{(category == SearchCategory.All ? "全部" : "应用")}分类最佳匹配 {item.Title}", selected);
+                var admin = (Button)typeof(MainWindow).GetField("BtnActionAdmin", Private)!.GetValue(window)!;
+                var location = (Button)typeof(MainWindow).GetField("BtnActionOpenLocation", Private)!.GetValue(window)!;
+                Check($"分类操作按钮 {category} {item.Title}",
+                    admin.Visibility == Visibility.Collapsed && location.Visibility == Visibility.Collapsed);
+            }
+        }
+        window.Close();
+        byte[]? after = File.Exists(settingsPath) ? SHA256.HashData(File.ReadAllBytes(settingsPath)) : null;
+        Check("不修改用户配置", before is null ? after is null : after is not null && before.SequenceEqual(after));
+    }
+
+    private static HashSet<HWND> GetAppWindows(string executablePath)
+    {
+        var processIds = new HashSet<uint>();
+        foreach (var process in Process.GetProcessesByName(Path.GetFileNameWithoutExtension(executablePath)))
+        {
+            using (process)
+            {
+                if (process.MainModule!.FileName.Equals(executablePath, StringComparison.OrdinalIgnoreCase))
+                    processIds.Add((uint)process.Id);
+            }
+        }
+        var windows = new HashSet<HWND>();
+        EnumWindows((window, _) =>
+        {
+            if (!IsWindowVisible(window)) return true;
+            GetWindowThreadProcessId(window, out var processId);
+            bool belongsToApp = processIds.Contains(processId);
+            if (!belongsToApp)
+                EnumChildWindows(window, (child, _) =>
+                {
+                    GetWindowThreadProcessId(child, out var childProcessId);
+                    belongsToApp = processIds.Contains(childProcessId) && IsWindowVisible(child);
+                    return !belongsToApp;
+                }, IntPtr.Zero);
+            if (belongsToApp) windows.Add(window);
+            return true;
+        }, IntPtr.Zero);
+        return windows;
+    }
+
+    private static bool WaitUntil(Func<bool> condition, TimeSpan timeout)
+    {
+        var timer = Stopwatch.StartNew();
+        while (!condition() && timer.Elapsed < timeout)
+        {
+            var frame = new DispatcherFrame();
+            Dispatcher.CurrentDispatcher.BeginInvoke(DispatcherPriority.ContextIdle,
+                new Action(() => frame.Continue = false));
+            Dispatcher.PushFrame(frame);
+            Thread.Sleep(20);
+        }
+        return condition();
+    }
+
+    private static void Check(string name, bool passed)
+    {
+        _checks++;
+        if (!passed) _failed++;
+        Console.WriteLine($"{(passed ? "通过" : "失败")} {name}");
+    }
+}

@@ -6,6 +6,9 @@ using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using EverythingonStart.Models;
+using Vanara.PInvoke;
+using Vanara.Windows.Shell;
+using static Vanara.PInvoke.Shell32;
 
 namespace EverythingonStart.Services;
 
@@ -149,6 +152,9 @@ public sealed class IconCacheService
 
     private static string GetCacheKey(SearchResultItem item)
     {
+        if (item.IsShellApp)
+            return item.FullPath;
+
         if (item.IsFolder)
             return "__FOLDER__";
 
@@ -169,6 +175,9 @@ public sealed class IconCacheService
 
     private ImageSource LoadIconForItem(SearchResultItem item, bool large)
     {
+        if (item.IsShellApp)
+            return ExtractShellAppIcon(item.FullPath, large);
+
         var ext = Path.GetExtension(item.FullPath);
         bool perFileIcon = !item.IsFolder && IsPerFileIconExtension(ext);
         bool useAttributesOnly = !perFileIcon;
@@ -181,6 +190,22 @@ public sealed class IconCacheService
             return extracted;
 
         return item.IsFolder ? _defaultFolderIcon : _defaultFileIcon;
+    }
+
+    private static ImageSource ExtractShellAppIcon(string path, bool large)
+    {
+        using var app = new ShellItem(path);
+        var factory = (IShellItemImageFactory)app.IShellItem;
+        int size = large ? 96 : 32;
+        factory.GetImage(new SIZE(size, size), SIIGBF.SIIGBF_ICONONLY | SIIGBF.SIIGBF_BIGGERSIZEOK,
+            out var handle).ThrowIfFailed();
+        using (handle)
+        {
+            var bitmap = Imaging.CreateBitmapSourceFromHBitmap(
+                handle.DangerousGetHandle(), IntPtr.Zero, Int32Rect.Empty, BitmapSizeOptions.FromEmptyOptions());
+            bitmap.Freeze();
+            return bitmap;
+        }
     }
 
     private static ImageSource? ExtractShellIcon(string pathOrExt, bool isFolder, bool large, bool useAttributesOnly)

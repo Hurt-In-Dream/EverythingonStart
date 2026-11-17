@@ -1,5 +1,9 @@
 using System.IO;
 using EverythingonStart.Models;
+using Vanara.InteropServices;
+using Vanara.Windows.Shell;
+using static Vanara.PInvoke.Ole32;
+using static Vanara.PInvoke.Shell32;
 
 namespace EverythingonStart.Services;
 
@@ -12,7 +16,8 @@ public sealed class StartMenuIndexService
         string DirectoryPath,
         string SearchKeywords,
         SearchResultKind Kind,
-        DateTime? LastModified
+        DateTime? LastModified,
+        string AppUserModelId = ""
     );
 
     private readonly List<IndexedEntry> _appEntries = [];
@@ -81,9 +86,55 @@ public sealed class StartMenuIndexService
                 }
             }
 
+            AddShellApps(entries, seenTitles);
+
             _appEntries.Clear();
             _appEntries.AddRange(entries);
             _isIndexed = true;
+        }
+    }
+
+    private static void AddShellApps(List<IndexedEntry> entries, HashSet<string> shortcutTitles)
+    {
+        using var folder = new ShellFolder(KNOWNFOLDERID.FOLDERID_AppsFolder);
+        using var enumerator = ComReleaserFactory.Create(folder.GetHandler<IEnumShellItems>(BHID.BHID_EnumItems));
+        var buffer = new IShellItem[1];
+        var seenAppIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        while (true)
+        {
+            enumerator.Item.Next(1, buffer, out var fetched).ThrowIfFailed();
+            if (fetched == 0)
+                break;
+
+            using var app = ComReleaserFactory.Create(buffer[0]);
+            var attributes = app.Item.GetAttributes(SFGAO.SFGAO_HIDDEN | SFGAO.SFGAO_NONENUMERATED | SFGAO.SFGAO_FOLDER);
+            if (attributes != 0)
+                continue;
+
+            var title = app.Item.GetDisplayName(SIGDN.SIGDN_NORMALDISPLAY);
+            var appId = ((IShellItem2)app.Item).GetString(PROPERTYKEY.System.AppUserModel.ID);
+            if (string.IsNullOrWhiteSpace(title) || string.IsNullOrWhiteSpace(appId))
+                continue;
+
+            // 保留已有快捷方式的文件操作；Shell 应用按标识去重，保留同名的不同应用。
+            if (shortcutTitles.Contains(title) || !seenAppIds.Add(appId))
+                continue;
+
+            if (title.Contains("uninstall", StringComparison.OrdinalIgnoreCase) ||
+                title.Contains("卸载", StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            entries.Add(new IndexedEntry(
+                Title: title,
+                Subtitle: "已注册的 Windows 应用",
+                TargetPath: $"shell:AppsFolder\\{appId}",
+                DirectoryPath: string.Empty,
+                SearchKeywords: $"{title} {appId}".ToLowerInvariant(),
+                Kind: SearchResultKind.App,
+                LastModified: null,
+                AppUserModelId: appId
+            ));
         }
     }
 
@@ -272,6 +323,7 @@ public sealed class StartMenuIndexService
             Subtitle = e.Subtitle,
             FullPath = e.TargetPath,
             DirectoryPath = e.DirectoryPath,
+            AppUserModelId = e.AppUserModelId,
             Kind = e.Kind,
             DateModified = e.LastModified
         };

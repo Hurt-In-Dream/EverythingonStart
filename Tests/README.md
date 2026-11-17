@@ -1,5 +1,19 @@
 # Win 键输入交接回归测试
 
+## Windows 注册应用搜索回归测试
+
+```powershell
+dotnet build EverythingonStart.csproj -c Release -p:Platform=x64
+pwsh -NoProfile -File .\Tests\Test-StartMenuIndex.ps1 -AppAssemblyDirectory .\bin\x64\Release\net10.0-windows
+```
+
+读取本机 `Get-StartApps` 返回的真实应用，验证 `AppsFolder` 包应用覆盖、应用标识去重、现有拼音搜索、后台索引和并发查询。
+对本机已注册的 Microsoft Store、Microsoft Rewards 检查大小图标、图标缓存、“全部”与“应用”分类最佳匹配，以及不适用的文件操作按钮。
+测试窗口不显示，不启动托盘或键盘钩子；临时数据和构建产物默认保存到已忽略的 `obj/start-menu-index-tests/`，不保存用户配置。
+
+附加 `-LaunchSmokeTest` 会真实启动本机已安装的 Microsoft Store、Microsoft Rewards，通过可执行文件路径、进程和可见窗口验证启动。
+仅关闭本次启动新增的应用窗口，保留已有窗口；不执行登录、购买或账户操作。未注册的反馈应用不生成测试条目。
+
 ## 拼音与首字母搜索回归测试
 
 ```powershell

@@ -6,12 +6,12 @@
 
 ## 下载与快速开始
 
-从 [v1.5.4 Release](https://github.com/Hurt-In-Dream/EverythingonStart/releases/tag/v1.5.4) 选择 Windows x64 版本：
+从 [v1.5.5 Release](https://github.com/Hurt-In-Dream/EverythingonStart/releases/tag/v1.5.5) 选择 Windows x64 版本：
 
 | 版本 | 下载 | 使用方式 |
 | --- | --- | --- |
-| 安装版 | [Setup-x64.exe](https://github.com/Hurt-In-Dream/EverythingonStart/releases/download/v1.5.4/EverythingonStart-v1.5.4-Setup-x64.exe) | 按用户安装，无需管理员权限，默认安装到 `%LOCALAPPDATA%\Programs\EverythingonStart` |
-| 绿色单文件版 | [Portable-x64.exe](https://github.com/Hurt-In-Dream/EverythingonStart/releases/download/v1.5.4/EverythingonStart-v1.5.4-Portable-x64.exe) | 下载一个 EXE 即可运行，无需旁置 DLL 或安装 .NET |
+| 安装版 | [Setup-x64.exe](https://github.com/Hurt-In-Dream/EverythingonStart/releases/download/v1.5.5/EverythingonStart-v1.5.5-Setup-x64.exe) | 按用户安装，无需管理员权限，默认安装到 `%LOCALAPPDATA%\Programs\EverythingonStart` |
+| 绿色单文件版 | [Portable-x64.exe](https://github.com/Hurt-In-Dream/EverythingonStart/releases/download/v1.5.5/EverythingonStart-v1.5.5-Portable-x64.exe) | 下载一个 EXE 即可运行，无需旁置 DLL 或安装 .NET |
 
 单文件版内置 .NET 与 Everything SDK，首次运行会将原生运行库解压到 .NET 的用户临时缓存；设置仍保存在用户目录，不是零磁盘写入模式。
 推荐 Windows 11 x64。文件检索需要安装并在后台运行 [Everything](https://www.voidtools.com/downloads/)。
@@ -19,6 +19,12 @@
 
 更新前请先从托盘退出旧实例，再安装或运行新版。设置保存在 `%LOCALAPPDATA%\EverythingonStart\settings.json`，卸载保留设置；安装器不自动更改开机启动项。
 发行包尚未进行代码签名；可使用同一 Release 的 `SHA256SUMS.txt` 校验下载文件。
+
+### v1.5.5 Windows 注册应用搜索修复
+
+- 补齐 Windows `AppsFolder` 应用索引，Microsoft Store、Microsoft Rewards 等已注册应用可在“全部”和“应用”分类中搜索。
+- 使用 Windows Shell 启动应用并读取原始图标，按应用标识缓存图标；这类应用不提供文件提权或打开文件位置操作，现有快捷方式和拼音搜索保持支持。
+- 真实应用搜索、分类、图标和启动回归 46/46 通过；验证范围与更新说明见 [发行说明](docs/RELEASE-v1.5.5.md)。
 
 ### v1.5.4 搜索响应优化
 
@@ -91,7 +97,7 @@
 
 ### 4. 多数据源毫秒级聚合与流畅交互动画
 - **本地文件与文件夹**：通过 [`EverythingSearchService`](Services/EverythingSearchService.cs) 直连 Everything 实时索引，毫秒级返回最佳匹配、应用、文档、文件夹与照片结果。
-- **开始菜单应用与系统设置**：[`StartMenuIndexService`](Services/StartMenuIndexService.cs) 内存常驻索引系统与用户开始菜单快捷方式及 30+ 项常用 Windows 11 `ms-settings:` 系统设置（统一采用 `mingcute:settings-4-line` 矢量设置图标）。
+- **开始菜单应用与系统设置**：[`StartMenuIndexService`](Services/StartMenuIndexService.cs) 内存常驻索引系统与用户开始菜单快捷方式、Windows `AppsFolder` 注册应用及 30+ 项常用 Windows 11 `ms-settings:` 系统设置。Microsoft Store、Microsoft Rewards 等没有传统快捷方式的已注册应用可在“全部”和“应用”分类中搜索，通过 Windows Shell 启动并显示原始应用图标；系统设置统一采用 `mingcute:settings-4-line` 矢量图标。
 - **拼音与首字母搜索**：应用、系统设置、本地文件与文件夹支持全拼、拼音前缀及首字母，例如 `jisuanqi` / `jsq` → 计算器、`renwulan` / `rwl` → 任务栏设置、`xiangmuwendang` / `xmwd` → 项目文档。支持常见多音字、简繁体及中文/数字混合名称；`ü` 可输入 `v`。词典随程序内置，无需联网或 Everything 拼音插件。
 - **实时 Web 联网搜索建议**：[`WebSuggestionService`](Services/WebSuggestionService.cs) 异步获取搜索联想词，支持一键通过 Bing、Google、百度或 DuckDuckGo 在默认浏览器中打开搜索结果。
 - **Web 右栏网页预览**：选中 Web 搜索词或建议后，右侧展示搜索引擎返回的网站、可点击标题、URL、摘要及可用的站内链接。保留完整搜索页入口；不再把 Web 项显示成文件属性卡片。
@@ -144,9 +150,9 @@ flowchart LR
 | [`Services/EverythingSearchService.cs`](Services/EverythingSearchService.cs) | `Everything3.dll` 与 `Everything64.dll` 双引擎检索封装、`Filters.csv` 与 `Everything.ini` 解析 |
 | [`Services/StartMenuBoundsService.cs`](Services/StartMenuBoundsService.cs) | 原生开始菜单窗口探测、跨分辨率自适应尺寸与缩放系数计算 |
 | [`Services/WinKeyHookService.cs`](Services/WinKeyHookService.cs) | `WH_KEYBOARD_LL` 键盘钩子、单按 `Win` 键识别与原生开始菜单打字拦截 |
-| [`Services/StartMenuIndexService.cs`](Services/StartMenuIndexService.cs) | 开始菜单程序索引与 Windows 11 `ms-settings:` 系统设置条目匹配 |
-| [`Services/IconCacheService.cs`](Services/IconCacheService.cs) | 文件系统图标缓存与 `mingcute:settings-4-line` 矢量设置图标渲染 |
-| [`Services/ActionExecutorService.cs`](Services/ActionExecutorService.cs) | 文件打开、管理员运行、文件所有权获取、定位文件位置与跳转 Everything 窗口 |
+| [`Services/StartMenuIndexService.cs`](Services/StartMenuIndexService.cs) | 开始菜单快捷方式、Windows 注册应用索引与 `ms-settings:` 系统设置条目匹配 |
+| [`Services/IconCacheService.cs`](Services/IconCacheService.cs) | 文件与 Windows 注册应用图标缓存、`mingcute:settings-4-line` 矢量设置图标渲染 |
+| [`Services/ActionExecutorService.cs`](Services/ActionExecutorService.cs) | 文件打开、Windows 注册应用启动、管理员运行、文件所有权获取、定位文件位置与跳转 Everything 窗口 |
 | [`Services/AppThemeService.cs`](Services/AppThemeService.cs) / [`Themes/ThemeResources.xaml`](Themes/ThemeResources.xaml) | 可选系统/浅色/深色主题、系统强调色与动态界面资源 |
 | [`Services/WindowBackdropService.cs`](Services/WindowBackdropService.cs) | 当前窗口的原生 DWM/Accent 背景合成、圆角裁剪、高对比度回退 |
 | [`Services/AppIconService.cs`](Services/AppIconService.cs) | 主窗口、设置中心、托盘的透明图标资源 |
@@ -233,6 +239,8 @@ flowchart LR
 | `Ctrl + Shift + C` | 复制选中条目的完整路径到剪贴板 |
 | `Esc` | 清空搜索框内容；若搜索框已为空则隐藏搜索窗口 |
 
+`AppsFolder` 应用使用 `shell:AppsFolder\应用标识` 作为启动路径，可复制该路径；不提供文件提权或打开文件位置操作。`AppsFolder` 数据源只收录当前用户实际注册的项目，不添加尚未安装的应用。
+
 ---
 
 ## 编译与运行
@@ -270,10 +278,10 @@ pwsh -NoProfile -File .\Scripts\Publish-Release.ps1 -InnoSetupCompiler 'C:\Progr
 .\bin\x64\Release\net10.0-windows\EverythingonStart.exe --self-test
 
 # 单文件包诊断：不启动托盘、全局热键、设置服务或单实例接管
-.\EverythingonStart-v1.5.0-Portable-x64.exe --package-self-test
+.\EverythingonStart-v1.5.5-Portable-x64.exe --package-self-test
 
 # 输出单文件内嵌许可证
-.\EverythingonStart-v1.5.0-Portable-x64.exe --licenses
+.\EverythingonStart-v1.5.5-Portable-x64.exe --licenses
 ```
 
 ## 许可证与第三方组件

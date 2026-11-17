@@ -52,6 +52,16 @@ Copyright (c) 2016 mozillazg. MIT license.
   retains alternative pronunciations, removes tone marks, and accepts `v` for `ü`.
 - No dictionary download or file-index upload occurs at runtime.
 
+## Vanara
+
+Vanara.Windows.Shell.Common 5.0.8 and its Vanara dependencies provide Windows Shell
+application enumeration, activation and icon interfaces.
+Copyright (c) 2017 David Hall. MIT license.
+
+- Source: https://github.com/dahall/Vanara
+- License: `licenses/Vanara-LICENSE.txt`.
+- Application names, identifiers and icons are read from the current user's Windows Shell registration; no package manifests or icon formats are parsed manually.
+
 ## .NET
 
 The self-contained Windows x64 release includes unmodified Microsoft .NET runtime,
